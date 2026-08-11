@@ -25,15 +25,19 @@ def generate_launch_description():
             ],
         ),
 
-        # slam_toolbox is a lifecycle node - auto configure+activate it
-        Node(
-            package='nav2_lifecycle_manager', executable='lifecycle_manager',
-            name='lifecycle_manager_slam', output='screen',
-            parameters=[
-                {'use_sim_time': use_sim_time},
-                {'autostart': True},
-                {'autostart_delay': 3.0},
-                {'node_names': ['slam_toolbox']},
-            ],
+        # slam_toolbox is a lifecycle node — configure+activate it directly.
+        # NOT via nav2_lifecycle_manager: slam_toolbox inherits plain
+        # rclcpp_lifecycle::LifecycleNode (no BondServer), so the manager's
+        # bond client can never connect and always logs "unable to be reached
+        # by bond ... Aborting bringup". Wait for the node, then transition.
+        ExecuteProcess(
+            cmd=['bash', '-c',
+                 'for i in $(seq 1 30); do '
+                 'ros2 lifecycle get /slam_toolbox >/dev/null 2>&1 && break; '
+                 'sleep 1; done; '
+                 'ros2 lifecycle set /slam_toolbox configure; '
+                 'sleep 1; '
+                 'ros2 lifecycle set /slam_toolbox activate'],
+            output='screen',
         ),
     ])

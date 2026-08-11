@@ -19,6 +19,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
+from launch.actions import ExecuteProcess
 from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
@@ -52,20 +53,23 @@ def generate_launch_description():
         ],
     )
 
-    # slam_toolbox is a lifecycle node — autostart it.
-    # bond_timeout raised: Gazebo boots slower than fake_sim, and the default
-    # 4s bond check aborts bringup before slam_toolbox registers.
-    lifecycle_manager = Node(
-        package='nav2_lifecycle_manager',
-        executable='lifecycle_manager',
-        name='lifecycle_manager_slam',
+    # slam_toolbox is a lifecycle node — configure+activate it directly.
+    # Do NOT use nav2_lifecycle_manager here: slam_toolbox inherits
+    # rclcpp_lifecycle::LifecycleNode (not nav2_util::LifecycleNode), so it
+    # never creates a BondServer. The manager's bond client can therefore
+    # NEVER connect, and it always logs "unable to be reached by bond ...
+    # Aborting bringup" no matter how high bond_timeout is set. The wait loop
+    # below polls until the node's lifecycle service exists (Gazebo boots
+    # slower than the node), then configures+activates it.
+    slam_activate = ExecuteProcess(
+        cmd=['bash', '-c',
+             'for i in $(seq 1 30); do '
+             'ros2 lifecycle get /slam_toolbox >/dev/null 2>&1 && break; '
+             'sleep 1; done; '
+             'ros2 lifecycle set /slam_toolbox configure; '
+             'sleep 1; '
+             'ros2 lifecycle set /slam_toolbox activate'],
         output='screen',
-        parameters=[{
-            'use_sim_time': use_sim_time,
-            'autostart': True,
-            'node_names': ['slam_toolbox'],
-            'bond_timeout': 20.0,
-        }],
     )
 
     ld = LaunchDescription()
@@ -78,6 +82,6 @@ def generate_launch_description():
 
     ld.add_action(gazebo_sim)
     ld.add_action(slam_toolbox)
-    ld.add_action(lifecycle_manager)
+    ld.add_action(slam_activate)
 
     return ld
