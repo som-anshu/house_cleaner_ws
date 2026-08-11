@@ -233,6 +233,13 @@ local_costmap:
           obstacle_min_range: 0.0
       always_send_full_costmap: True
 
+# Root costmap params — collision_monitor reads costmap.robot_radius
+# directly, so this block must exist even when each costmap namespace
+# also declares its own robot_radius.
+costmap:
+  ros__parameters:
+    robot_radius: 0.22
+
 global_costmap:
   global_costmap:
     ros__parameters:
