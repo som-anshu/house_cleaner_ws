@@ -49,10 +49,10 @@ from tf2_ros import TransformListener, Buffer
 X_MIN, X_MAX = -1.95, 1.95
 Y_MIN, Y_MAX = -2.5, 2.5
 
-# Dock geometry (map frame)
+# Dock geometry (map frame; override with params dock.x / dock.y / dock.yaw)
 DOCK_CENTER = (0.0, 2.75)
-DOCK_APPROACH = (0.0, 1.87)   # clear of the dock's inflated costmap blob
 DOCK_YAW = math.pi / 2.0      # robot faces +y (north) into the dock
+DOCK_APPROACH_BACK = 0.88     # approach pose is this far south of dock.y
 CREEP_STOP_RANGE = 0.13       # laser front range at which we are seated
 CREEP_SPEED = 0.04
 CREEP_TIMEOUT = 30.0
@@ -80,12 +80,20 @@ class HouseCleanerAssistant(Node):
         self.declare_parameter("battery.low_threshold", 35.0)
         self.declare_parameter("battery.charge_target", 95.0)
         self.declare_parameter("mission.strip_width", 0.60)
+        self.declare_parameter("dock.x", DOCK_CENTER[0])
+        self.declare_parameter("dock.y", DOCK_CENTER[1])
+        self.declare_parameter("dock.yaw", DOCK_YAW)
 
         self.drain_rate = self.get_parameter("battery.drain_rate").value
         self.charge_rate = self.get_parameter("battery.charge_rate").value
         self.low_threshold = self.get_parameter("battery.low_threshold").value
         self.charge_target = self.get_parameter("battery.charge_target").value
         strip = self.get_parameter("mission.strip_width").value
+        self.dock = (
+            self.get_parameter("dock.x").value,
+            self.get_parameter("dock.y").value,
+            self.get_parameter("dock.yaw").value,
+        )
 
         # battery state
         self.battery_pct = 100.0
@@ -106,8 +114,10 @@ class HouseCleanerAssistant(Node):
         self.nav = ActionClient(self, NavigateToPose, "/navigate_to_pose")
         self.goal_handle = None
 
-        # mission state
-        self.goals = self._build_goals(strip)
+        # mission state (goals are planned from the live SLAM map in
+        # run_mission, once the map is known — see _coverage_bounds)
+        self.strip = strip
+        self.goals = None
         self.goal_idx = 0
         self.state = "INIT"
         self.low_battery_fired = False
@@ -119,21 +129,50 @@ class HouseCleanerAssistant(Node):
         self.create_timer(0.5, self.watchdog_cb)
 
         self.get_logger().info(
-            f"Assistant ready: {len(self.goals)} coverage goals, "
+            f"Assistant ready: strip={strip:.2f} m, "
             f"drain={self.drain_rate:.2f}%/s charge={self.charge_rate:.2f}%/s, "
-            f"low={self.low_threshold:.0f}% target={self.charge_target:.0f}%"
+            f"low={self.low_threshold:.0f}% target={self.charge_target:.0f}%, "
+            f"dock=({self.dock[0]:.2f}, {self.dock[1]:.2f}, "
+            f"yaw={math.degrees(self.dock[2]):.0f}deg)"
         )
 
     # ------------------------------------------------------------- helpers
-    def _build_goals(self, strip):
+    def _coverage_bounds(self, grid):
+        """Derive the cleaning rectangle from the live SLAM map.
+
+        Bounds come from the map window (origin + size), inset by the robot
+        half-width + margin, clamped to stay clear of the dock's apron, with
+        a sane minimum so a barely-started map still yields usable goals.
+        This is what makes the mission work in ANY mapped room instead of
+        this room's hardcoded constants.
+        """
+        info = grid.info
+        margin = 0.37  # robot_radius 0.22 + wall margin
+        x_min = info.origin.position.x + margin
+        y_min = info.origin.position.y + margin
+        x_max = info.origin.position.x + info.width * info.resolution - margin
+        y_max = info.origin.position.y + info.height * info.resolution - margin
+
+        if x_max - x_min < 2.0 or y_max - y_min < 1.0:
+            # degenerate window — fall back to this room's proven geometry
+            self.get_logger().warn(
+                f"Map window too small ({x_max - x_min:.1f}x{y_max - y_min:.1f} m) "
+                "— using fallback bounds"
+            )
+            return (X_MIN, X_MAX, Y_MIN, Y_MAX)
+        return (x_min, x_max, y_min, y_max)
+
+    def _build_goals(self, strip, bounds):
+        """Boustrophedon coverage grid over the given rectangle."""
+        x_min, x_max, y_min, y_max = bounds
         goals = []
-        y = Y_MIN + strip / 2.0
+        y = y_min + strip / 2.0
         row = 0
-        while y <= Y_MAX - strip / 2.0:
+        while y <= y_max - strip / 2.0:
             if row % 2 == 0:
-                x0, x1, yaw0, yaw1 = X_MIN, X_MAX, 0.0, math.pi
+                x0, x1, yaw0, yaw1 = x_min, x_max, 0.0, math.pi
             else:
-                x0, x1, yaw0, yaw1 = X_MAX, X_MIN, math.pi, 0.0
+                x0, x1, yaw0, yaw1 = x_max, x_min, math.pi, 0.0
             goals.append((x0, y, yaw0))
             goals.append((x1, y, yaw1))
             y += strip
@@ -197,7 +236,7 @@ class HouseCleanerAssistant(Node):
             self.goal_handle.cancel_goal_async()
 
     def publish_dock_pose(self):
-        msg = self._pose_msg(DOCK_CENTER[0], DOCK_CENTER[1], DOCK_YAW)
+        msg = self._pose_msg(self.dock[0], self.dock[1], self.dock[2])
         msg.header.frame_id = "map"
         msg.header.stamp = self.get_clock().now().to_msg()
         self.dock_pose_pub.publish(msg)
@@ -217,7 +256,10 @@ class HouseCleanerAssistant(Node):
             return None
 
     def wait_for_map(self, timeout=60.0):
-        """Wait until slam_toolbox publishes a non-empty occupancy grid."""
+        """Wait until slam_toolbox publishes a non-empty occupancy grid.
+
+        Returns the grid (used to plan the coverage rectangle) or None.
+        """
         got = {"grid": None}
 
         def cb(grid):
@@ -231,14 +273,15 @@ class HouseCleanerAssistant(Node):
         self.destroy_subscription(sub)
         if got["grid"] is None:
             self.get_logger().error("Timed out waiting for /map from slam_toolbox")
-            return False
-        occ = sum(1 for v in got["grid"].data if v > 50)
-        free = sum(1 for v in got["grid"].data if 0 <= v <= 50)
+            return None
+        grid = got["grid"]
+        occ = sum(1 for v in grid.data if v > 50)
+        free = sum(1 for v in grid.data if 0 <= v <= 50)
         self.get_logger().info(
-            f"Map live: {got['grid'].info.width}x{got['grid'].info.height} "
+            f"Map live: {grid.info.width}x{grid.info.height} "
             f"({occ} occupied / {free} free cells)"
         )
-        return True
+        return grid
 
     # --------------------------------------------------------- nav actions
     def send_goal(self, x, y, yaw, timeout=180.0):
@@ -261,6 +304,7 @@ class HouseCleanerAssistant(Node):
             # hard timeout — cancel and report
             self.goal_handle.cancel_goal_async()
             rclpy.spin_until_future_complete(self, result_future, timeout_sec=5.0)
+            self.goal_handle = None
             return ("TIMEOUT", -1)
         status = result_future.result().status
         err = result_future.result().result.error_code
@@ -372,13 +416,23 @@ class HouseCleanerAssistant(Node):
             self.get_logger().error("No /navigate_to_pose server — aborting")
             return 1
         self.get_logger().info("Nav2 up.")
-        if not self.wait_for_map():
+        grid = self.wait_for_map()
+        if grid is None:
             return 1
+        bounds = self._coverage_bounds(grid)
+        self.goals = self._build_goals(self.strip, bounds)
+        self.get_logger().info(
+            f"Coverage planned from live map: {len(self.goals)} goals over "
+            f"x∈[{bounds[0]:.2f},{bounds[1]:.2f}] y∈[{bounds[2]:.2f},{bounds[3]:.2f}]"
+        )
         self.get_logger().info("--- MISSION START (unknown-room SLAM cleaning) ---")
         self.state = "CLEANING"
         return self._cleaning_loop()
 
     def _cleaning_loop(self):
+        if self.goals is None:
+            self.get_logger().error("No coverage goals — aborting mission")
+            return 2
         total = len(self.goals)
         while self.goal_idx < total:
             if self.low_battery_fired:
@@ -433,12 +487,12 @@ class HouseCleanerAssistant(Node):
         self.get_logger().info(
             f"Battery {self.battery_pct:.1f}% — returning to dock"
         )
-        status, _ = self.send_goal(
-            DOCK_APPROACH[0], DOCK_APPROACH[1], DOCK_YAW
-        )
+        # approach pose: south of the dock, facing it
+        approach = (self.dock[0], self.dock[1] - DOCK_APPROACH_BACK, self.dock[2])
+        status, _ = self.send_goal(approach[0], approach[1], approach[2])
         if status != "SUCCEEDED":
             self.get_logger().warn(f"Return-to-dock goal {status} — retrying once")
-            status, _ = self.send_goal(DOCK_APPROACH[0], DOCK_APPROACH[1], DOCK_YAW)
+            status, _ = self.send_goal(approach[0], approach[1], approach[2])
 
         self.state = "DOCKING"
         seated = self.creep_to_dock()
@@ -447,7 +501,7 @@ class HouseCleanerAssistant(Node):
             self.get_logger().warn("Docking failed — backing out and re-approaching")
             self.undock()
             self.state = "RETURNING"
-            status, _ = self.send_goal(DOCK_APPROACH[0], DOCK_APPROACH[1], DOCK_YAW)
+            status, _ = self.send_goal(approach[0], approach[1], approach[2])
             self.state = "DOCKING"
             seated = self.creep_to_dock()
         if not seated:
