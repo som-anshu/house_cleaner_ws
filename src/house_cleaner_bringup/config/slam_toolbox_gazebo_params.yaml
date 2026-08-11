@@ -1,0 +1,33 @@
+# slam_toolbox async params for house_cleaner Gazebo stack
+# Robot: turtlebot3_burger in turtlebot3_house.world (Gazebo Harmonic).
+# LDS: 360 rays, 0.12-3.5m, gaussian noise stddev 0.01.
+# use_sim_time MUST be true — /clock drives all nodes.
+slam_toolbox:
+  ros__parameters:
+    use_sim_time: true
+    mode: mapping
+
+    # Frames
+    map_frame_name: map
+    odom_frame_name: odom
+    base_frame_name: base_footprint
+
+    # Input (LDS max range 3.5m — cap above real max so scans aren't clipped)
+    scan_topic: /scan
+    scan_period: 0.1
+    max_laser_range: 4.0
+    resolution: 0.05
+
+    # Publishing
+    throttle_scans: 1
+    transform_publish_period: 0.02
+    map_update_interval: 5.0
+    minimum_time_interval: 0.5
+    transform_timeout: 0.2
+    tf_buffer_duration: 30.0
+
+    # Scan matching
+    use_scan_matching: true
+    use_scan_barycenter: true
+    minimum_travel_distance: 0.5
+    minimum_travel_heading: 0.5

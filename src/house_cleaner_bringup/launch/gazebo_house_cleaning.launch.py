@@ -1,15 +1,118 @@
-from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription
-from launch.launch_description_sources import PythonLaunchDescriptionSource
-from ament_index_python.packages import get_package_share_directory
+#!/usr/bin/env python3
+#
+# gazebo_house_cleaning.launch.py
+#
+# Real-sensor simulation wrapper: TurtleBot3 burger in a simple single-room
+# Gazebo world (worlds/single_room.world, interior 4.65x5.75 m — same geometry
+# as the static nav map). Pass world:=turtlebot3_house.world for the ROBOTIS
+# house world instead.
+#
+# Flow (mirrors ROBOTIS Gazebo simulation tutorial):
+#   1. gz-sim server loads the world (-r -s headless; GUI optional)
+#   2. robot_state_publisher publishes URDF TF (use_sim_time=true)
+#   3. ros_gz_sim create spawns the burger
+#   4. ros_gz_bridge parameter_bridge bridges /clock /odom /scan /tf /cmd_vel /imu
+#
+# Usage:
+#   export TURTLEBOT3_MODEL=burger
+#   ros2 launch house_cleaner_bringup gazebo_house_cleaning.launch.py
+#   # with Gazebo GUI:
+#   ros2 launch house_cleaner_bringup gazebo_house_cleaning.launch.py headless:=false
+#
+# NOTE on cmd_vel: the turtlebot3 burger bridge maps /cmd_vel as
+# geometry_msgs/TwistStamped (ROS->GZ). To drive: publish TwistStamped, e.g.
+#   ros2 topic pub -r 10 /cmd_vel geometry_msgs/msg/TwistStamped \
+#     "{twist: {linear: {x: 0.2}, angular: {z: 0.0}}}"
+
 import os
 
+from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription
+from launch.actions import AppendEnvironmentVariable
+from launch.actions import DeclareLaunchArgument
+from launch.actions import IncludeLaunchDescription
+from launch.conditions import UnlessCondition
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration
+from launch.substitutions import PathJoinSubstitution
+
+
 def generate_launch_description():
-    house_cleaner_pkg = '/home/koko/house_cleaner_ws/src/house_cleaner_bringup'
-    fake_sim_launch = os.path.join(house_cleaner_pkg, 'launch', 'house_cleaning_fake_sim.launch.py')
-    
-    return LaunchDescription([
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(fake_sim_launch),
+    tbg = get_package_share_directory('turtlebot3_gazebo')
+    ros_gz_sim = get_package_share_directory('ros_gz_sim')
+    BRINGUP = '/home/koko/house_cleaner_ws/src/house_cleaner_bringup'
+
+    use_sim_time = LaunchConfiguration('use_sim_time', default='true')
+    headless = LaunchConfiguration('headless', default='true')
+    world = LaunchConfiguration('world', default='single_room.world')
+    x_pose = LaunchConfiguration('x_pose', default='0.0')
+    y_pose = LaunchConfiguration('y_pose', default='0.0')
+
+    world_path = PathJoinSubstitution([BRINGUP, 'worlds', world])
+
+    # 1. Physics server (headless by default; -r runs immediately, -s = server only)
+    gzserver_cmd = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(ros_gz_sim, 'launch', 'gz_sim.launch.py')
         ),
-    ])
+        launch_arguments={'gz_args': ['-r -s -v2 ', world_path], 'on_exit_shutdown': 'true'}.items()
+    )
+
+    # 1b. Optional GUI client — runs UNLESS headless:=true
+    gzclient_cmd = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(ros_gz_sim, 'launch', 'gz_sim.launch.py')
+        ),
+        condition=UnlessCondition(headless),
+        launch_arguments={'gz_args': '-g -v2 ', 'on_exit_shutdown': 'true'}.items()
+    )
+
+    # 2. URDF -> TF (sim time so TF follows the Gazebo clock)
+    robot_state_publisher_cmd = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(tbg, 'launch', 'robot_state_publisher.launch.py')
+        ),
+        launch_arguments={'use_sim_time': use_sim_time}.items()
+    )
+
+    # 3+4. Spawn burger + start topic bridge (also starts ros_gz_image if cam model)
+    spawn_turtlebot_cmd = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(tbg, 'launch', 'spawn_turtlebot3.launch.py')
+        ),
+        launch_arguments={'x_pose': x_pose, 'y_pose': y_pose}.items()
+    )
+
+    # House model must resolve from the local share dir, not fuel.gazebosim.org
+    set_env_resources = AppendEnvironmentVariable(
+        'GZ_SIM_RESOURCE_PATH',
+        os.path.join(tbg, 'models')
+    )
+    set_env_model = AppendEnvironmentVariable(
+        'GZ_SIM_SYSTEM_RESOURCE_PATH',
+        os.path.join(tbg, 'models')
+    )
+
+    ld = LaunchDescription()
+    ld.add_action(DeclareLaunchArgument(
+        'use_sim_time', default_value='true',
+        description='Use Gazebo /clock for all nodes (must be true with Gazebo)'))
+    ld.add_action(DeclareLaunchArgument(
+        'headless', default_value='true',
+        description='true = server only, no gzclient GUI'))
+    ld.add_action(DeclareLaunchArgument(
+        'world', default_value='single_room.world',
+        description='World file under house_cleaner_bringup/worlds (e.g. single_room.world)'))
+    ld.add_action(DeclareLaunchArgument(
+        'x_pose', default_value='0.0', description='Spawn x (m)'))
+    ld.add_action(DeclareLaunchArgument(
+        'y_pose', default_value='0.0', description='Spawn y (m)'))
+
+    ld.add_action(set_env_resources)
+    ld.add_action(set_env_model)
+    ld.add_action(gzserver_cmd)
+    ld.add_action(robot_state_publisher_cmd)
+    ld.add_action(spawn_turtlebot_cmd)
+    ld.add_action(gzclient_cmd)
+
+    return ld
