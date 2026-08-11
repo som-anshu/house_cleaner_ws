@@ -18,15 +18,14 @@ install(FILES resource/${PROJECT_NAME}
   DESTINATION share/ament_index/resource_index/packages/
 )
 
-# Install the runner script
-install(PROGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/run_fake_sim.py
-  DESTINATION lib/${PROJECT_NAME}/run_fake_sim
-  PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
-)
+# (a legacy source-tree runner was removed here — env.sh + `ros2 launch`
+#  replace it; see README Troubleshooting)
 
-# Install fake_sim.py as an executable directly
+# Install fake_sim.py as an executable directly (flat name, like the
+# assistant — DESTINATION dirs are directories, RENAME gives the flat file)
 install(PROGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/house_cleaner_bringup/fake_sim.py
-  DESTINATION lib/${PROJECT_NAME}/fake_sim
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME fake_sim
   PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
 )
 

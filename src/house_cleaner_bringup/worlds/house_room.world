@@ -2,7 +2,7 @@
 <!--
   house_room.world
   Autonomous-cleaning demo world: one room, interior 4.65 x 5.75 m
-  (same geometry as single_room.world / the saved nav map), with
+  (same geometry as the saved nav map), with
   furniture obstacles for flavor and a charging dock on the north wall.
 
   Obstacle layout keeps >= 0.5 m corridors for the burger (radius ~0.105 m)

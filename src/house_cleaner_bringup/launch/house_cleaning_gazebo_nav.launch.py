@@ -28,7 +28,7 @@ from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 
-BRINGUP = '/home/koko/house_cleaner_ws/src/house_cleaner_bringup'
+BRINGUP = get_package_share_directory('house_cleaner_bringup')
 NAV2_BRINGUP = get_package_share_directory('nav2_bringup')
 
 

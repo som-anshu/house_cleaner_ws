@@ -1,27 +1,27 @@
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch_ros.actions import Node
 from launch.actions import ExecuteProcess
 from launch.substitutions import LaunchConfiguration
+import os
 
 def generate_launch_description():
     use_sim_time = False
+    BRINGUP = get_package_share_directory('house_cleaner_bringup')
 
     return LaunchDescription([
-        # Run fake_sim as a process with command line args
-        ExecuteProcess(
-            cmd=['python3',
-                 '/home/koko/house_cleaner_ws/src/house_cleaner_bringup/house_cleaner_bringup/fake_sim.py'],
-            name='house_cleaning_fake_sim',
-            output='screen',
+        # Run fake_sim (no Gazebo smoke test: odom + scan from the fake sim)
+        Node(
+            package='house_cleaner_bringup', executable='fake_sim',
+            name='house_cleaning_fake_sim', output='screen',
         ),
 
         # SLAM: async slam_toolbox builds /map from /scan + odom TF
-        # (mirrors ROBOTIS tutorial "Run SLAM Node" step, cartographer -> slam_toolbox)
         Node(
             package='slam_toolbox', executable='async_slam_toolbox_node',
             name='slam_toolbox', output='screen',
             parameters=[
-                '/home/koko/house_cleaner_ws/src/house_cleaner_bringup/config/slam_toolbox_params.yaml',
+                os.path.join(BRINGUP, 'config', 'slam_toolbox_params.yaml'),
             ],
         ),
 

@@ -32,7 +32,7 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
-BRINGUP = '/home/koko/house_cleaner_ws/src/house_cleaner_bringup'
+BRINGUP = get_package_share_directory('house_cleaner_bringup')
 NAV2_PARAMS = os.path.join(BRINGUP, 'config', 'nav2_params.yaml')
 SLAM_PARAMS = os.path.join(BRINGUP, 'config', 'slam_toolbox_gazebo_params.yaml')
 

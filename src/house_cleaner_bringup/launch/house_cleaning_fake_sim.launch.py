@@ -1,52 +1,37 @@
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch_ros.actions import Node
-from launch.actions import DeclareLaunchArgument, ExecuteProcess
+from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 import os
 
 def generate_launch_description():
     autostart_delay = LaunchConfiguration('autostart_delay', default='15.0')
-    nav_params_file = LaunchConfiguration('nav_params_file', 
-        default='/home/koko/house_cleaner_ws/src/house_cleaner_bringup/config/nav2_params.yaml')
-    
-    pkg_desc = '/home/koko/house_cleaner_ws/src/house_cleaner_description'
-    
+    BRINGUP = get_package_share_directory('house_cleaner_bringup')
+    nav_params_file = LaunchConfiguration(
+        'nav_params_file',
+        default=os.path.join(BRINGUP, 'config', 'nav2_params.yaml'))
+
     use_sim_time = False
-    
+
     return LaunchDescription([
         DeclareLaunchArgument('autostart_delay', default_value='15.0'),
-        DeclareLaunchArgument('nav_params_file', 
-            default_value='/home/koko/house_cleaner_ws/src/house_cleaner_bringup/config/nav2_params.yaml'),
-        
-        # Robot state publisher disabled - fake_sim provides TF
-        # Node(
-        #     package='robot_state_publisher', executable='robot_state_publisher',
-        #     name='robot_state_publisher', output='screen',
-        #     parameters=[{'use_sim_time': use_sim_time,
-        #                 'robot_description': open(os.path.join(pkg_desc, 'urdf', 'house_cleaner.urdf.xacro')).read()}],
-        # ),
-        
-        # Joint state publisher disabled - no joint states in fake_sim
-        # Node(
-        #     package='joint_state_publisher', executable='joint_state_publisher',
-        #     name='joint_state_publisher', output='screen',
-        #     parameters=[{'use_sim_time': use_sim_time}],
-        # ),
-        
+        DeclareLaunchArgument(
+            'nav_params_file',
+            default_value=os.path.join(BRINGUP, 'config', 'nav2_params.yaml')),
+
         # Run fake_sim as a process with command line args
-        ExecuteProcess(
-            cmd=['python3', 
-                 '/home/koko/house_cleaner_ws/src/house_cleaner_bringup/house_cleaner_bringup/fake_sim.py'],
-            name='house_cleaning_fake_sim',
-            output='screen',
+        Node(
+            package='house_cleaner_bringup', executable='fake_sim',
+            name='house_cleaning_fake_sim', output='screen',
         ),
-        
+
         Node(
             package='nav2_map_server', executable='map_server',
             name='map_server', output='screen',
             parameters=[
                 {'use_sim_time': use_sim_time},
-                {'yaml_filename': '/home/koko/map.yaml'},
+                {'yaml_filename': os.path.join(BRINGUP, 'config', 'single_room_map.yaml')},
                 {'topic_name': 'map'},
                 {'frame_id': 'map'},
             ],

@@ -4,7 +4,7 @@ Room coverage planner for house_cleaner fake_sim stack.
 
 Usage:
   source /opt/ros/jazzy/setup.bash
-  ROS_DOMAIN_ID=30 python3 /home/koko/house_cleaner_ws/src/house_cleaner_bringup/scripts/coverage_planner.py
+  ROS_DOMAIN_ID=30 python3 coverage_planner.py
 
 Sends a sequence of NavigateToPose goals in boustrophedon (lawnmower)
 pattern over the free area of the map. Waits for each goal to complete

@@ -27,6 +27,14 @@ amcl:
     resample_interval: 1
     robot_model_type: "nav2_amcl::DifferentialMotionModel"
     save_pose_rate: 0.5
+    # robot spawns at world (0,0) yaw 0 and the SLAM map is anchored there,
+    # so seeding AMCL at that exact pose is correct for this stack
+    set_initial_pose: true
+    initial_pose:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+      yaw: 0.0
     sigma_hit: 0.2
     tf_broadcast: true
     transform_tolerance: 1.0

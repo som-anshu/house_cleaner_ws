@@ -25,8 +25,6 @@ setup(
             'launch/house_cleaning_auto.launch.py',
         ]),
         ('share/house_cleaner_bringup/worlds', [
-            'worlds/house_cleaner.world',
-            'worlds/single_room.world',
             'worlds/house_room.world',
         ]),
         ('share/house_cleaner_bringup/models/wall', [

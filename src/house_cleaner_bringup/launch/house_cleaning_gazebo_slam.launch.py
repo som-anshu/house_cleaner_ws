@@ -9,7 +9,7 @@
 #   ros2 launch house_cleaner_bringup house_cleaning_gazebo_slam.launch.py
 #
 # After mapping:
-#   ros2 run nav2_map_server map_saver_cli -f /home/koko/house_map
+#   ros2 run nav2_map_server map_saver_cli -f /tmp/house_map
 #
 # Then navigate on the saved map with house_cleaning_fake_sim.launch.py
 # (repoint its map yaml) — or run the nav stack against this sim.
@@ -25,7 +25,7 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
-BRINGUP = '/home/koko/house_cleaner_ws/src/house_cleaner_bringup'
+BRINGUP = get_package_share_directory('house_cleaner_bringup')
 
 
 def generate_launch_description():

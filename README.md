@@ -19,7 +19,7 @@ recharge, resume, final park.
 
 ```bash
 export TURTLEBOT3_MODEL=burger
-source /home/koko/house_cleaner_ws/env.sh
+source env.sh
 ros2 launch house_cleaner_bringup house_cleaning_auto.launch.py
 ```
 
@@ -68,7 +68,7 @@ house_cleaner_assistant ──NavigateToPose goals──►
 Key files:
 
 - `house_cleaner_bringup/house_cleaner_assistant.py` — mission logic
-- `worlds/house_room.world` — room (4.65×5.55 m interior), obstacles, dock
+- `worlds/house_room.world` — room (4.65×5.75 m interior), obstacles, dock
 - `config/nav2_params.yaml` — Nav2 tuning (global costmap has no fixed
   bounds — it must follow the growing SLAM map)
 - `config/slam_toolbox_gazebo_params.yaml` — SLAM params
@@ -88,6 +88,10 @@ Key files:
 - **Kill stale instances before relaunching**: `tmux kill-session -t
   house_auto` (if using tmux) and kill leftover `gz sim` / `ros2 launch`
   processes — overlapping sims corrupt TF and costmaps.
+- **Rebuild after editing config/launch/worlds**: launch files resolve these
+  via the installed share dir, and on this host the install is real files
+  (not symlinks), so `colcon build --packages-select house_cleaner_bringup`
+  is needed to propagate edits.
 - Nav2 goal status (Jazzy): 4 = SUCCEEDED, 5 = CANCELED, 6 = ABORTED.
 - LDS scan index 0 is the robot's *forward* (angle 0), index 180 the back.
 - The dock sits on the floor (z = 0); a floating dock passes under the robot

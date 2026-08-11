@@ -3,9 +3,9 @@
 # gazebo_house_cleaning.launch.py
 #
 # Real-sensor simulation wrapper: TurtleBot3 burger in a simple single-room
-# Gazebo world (worlds/single_room.world, interior 4.65x5.75 m — same geometry
-# as the static nav map). Pass world:=turtlebot3_house.world for the ROBOTIS
-# house world instead.
+# Gazebo world (worlds/house_room.world, interior 4.65x5.75 m — furniture
+# obstacles + charging dock, matching the shipped SLAM map). Pass
+# world:=turtlebot3_house.world for the ROBOTIS house world instead.
 #
 # Flow (mirrors ROBOTIS Gazebo simulation tutorial):
 #   1. gz-sim server loads the world (-r -s headless; GUI optional)
@@ -42,11 +42,11 @@ from launch_ros.actions import Node
 def generate_launch_description():
     tbg = get_package_share_directory('turtlebot3_gazebo')
     ros_gz_sim = get_package_share_directory('ros_gz_sim')
-    BRINGUP = '/home/koko/house_cleaner_ws/src/house_cleaner_bringup'
+    BRINGUP = get_package_share_directory('house_cleaner_bringup')
 
     use_sim_time = LaunchConfiguration('use_sim_time', default='true')
     headless = LaunchConfiguration('headless', default='true')
-    world = LaunchConfiguration('world', default='single_room.world')
+    world = LaunchConfiguration('world', default='house_room.world')
     x_pose = LaunchConfiguration('x_pose', default='0.0')
     y_pose = LaunchConfiguration('y_pose', default='0.0')
 
@@ -125,8 +125,8 @@ def generate_launch_description():
         'headless', default_value='true',
         description='true = server only, no gzclient GUI'))
     ld.add_action(DeclareLaunchArgument(
-        'world', default_value='single_room.world',
-        description='World file under house_cleaner_bringup/worlds (e.g. single_room.world)'))
+        'world', default_value='house_room.world',
+        description='World file under house_cleaner_bringup/worlds (e.g. house_room.world)'))
     ld.add_action(DeclareLaunchArgument(
         'x_pose', default_value='0.0', description='Spawn x (m)'))
     ld.add_action(DeclareLaunchArgument(
