@@ -13,7 +13,9 @@ setup(
             'config/burger_bridge.yaml',
             'config/nav2_params.yaml',
             'config/slam_toolbox_params.yaml',
-            'config/slam_toolbox_gazebo_params.yaml']),
+            'config/slam_toolbox_gazebo_params.yaml',
+            'config/single_room_map.yaml',
+            'config/single_room_map.pgm']),
         ('share/house_cleaner_bringup/launch', [
             'launch/house_cleaning_fake_sim.launch.py',
             'launch/gazebo_house_cleaning.launch.py',
@@ -30,9 +32,6 @@ setup(
         ('share/house_cleaner_bringup/models/wall', [
             'models/wall/model.config',
             'models/wall/model.sdf',
-        ]),
-        ('share/house_cleaner_bringup/models/wall/meshes', [
-            'models/wall/meshes/wall.dae',
         ]),
     ],
     install_requires=['setuptools'],

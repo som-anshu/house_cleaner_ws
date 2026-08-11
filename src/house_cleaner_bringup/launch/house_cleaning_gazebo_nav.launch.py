@@ -14,9 +14,10 @@
 #   nav2 bringup_launch.py           (map_server, amcl, planner, controller,
 #                                     bt_navigator, behavior_server, ...)
 #
-# The map is the SLAM result saved earlier (/home/koko/single_room_map.yaml).
-# The robot spawns at world (0,0) yaw 0, which is also its start pose in the
-# map frame, so amcl initial_pose matches the spawn.
+# The map is the SLAM result saved earlier; it now ships with the package
+# at config/single_room_map.yaml (copy of the SLAM save). The robot spawns at
+# world (0,0) yaw 0, which is also its start pose in the map frame, so amcl
+# initial_pose matches the spawn. Override with map:=/path/to/other_map.yaml.
 
 import os
 
@@ -33,7 +34,10 @@ NAV2_BRINGUP = get_package_share_directory('nav2_bringup')
 
 def generate_launch_description():
     headless = LaunchConfiguration('headless', default='true')
-    map_yaml = LaunchConfiguration('map', default='/home/koko/single_room_map.yaml')
+    map_yaml = LaunchConfiguration(
+        'map',
+        default=os.path.join(BRINGUP, 'config', 'single_room_map.yaml'),
+    )
 
     gazebo_sim = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -66,7 +70,7 @@ def generate_launch_description():
         'headless', default_value='true',
         description='true = no Gazebo GUI'))
     ld.add_action(DeclareLaunchArgument(
-        'map', default_value='/home/koko/single_room_map.yaml',
+        'map', default_value=os.path.join(BRINGUP, 'config', 'single_room_map.yaml'),
         description='Saved SLAM map yaml for localization'))
 
     ld.add_action(gazebo_sim)

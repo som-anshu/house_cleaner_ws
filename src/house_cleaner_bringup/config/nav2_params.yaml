@@ -236,13 +236,9 @@ global_costmap:
       robot_radius: 0.22
       resolution: 0.05
       track_unknown_space: true
-      # Saved SLAM map (single_room_map): 94 x 116 cells @ 0.05 m/cell
-      # (4.7m x 5.8m incl. walls), origin [-2.355, -2.907]. Static layer
-      # overrides these from the loaded map once it arrives.
-      width: 94
-      height: 116
-      origin_x: -2.355
-      origin_y: -2.907
+      # NO fixed width/height/origin here: with SLAM the /map grows and the
+      # global costmap must resize to follow it. Fixed dims cause endless
+      # "worldToMap failed" spam and planner failures past the initial bounds.
       plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
