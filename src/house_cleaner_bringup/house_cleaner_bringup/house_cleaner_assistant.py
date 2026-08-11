@@ -46,8 +46,8 @@ from nav2_msgs.action import NavigateToPose
 from tf2_ros import TransformListener, Buffer
 
 # Room interior (world == initial map frame; matches house_room.world walls)
-X_MIN, X_MAX = -2.25, 2.25
-Y_MIN, Y_MAX = -2.65, 2.65
+X_MIN, X_MAX = -2.325, 2.325
+Y_MIN, Y_MAX = -2.875, 2.875
 
 # Dock geometry (map frame; override with params dock.x / dock.y / dock.yaw)
 DOCK_CENTER = (0.0, 2.75)
