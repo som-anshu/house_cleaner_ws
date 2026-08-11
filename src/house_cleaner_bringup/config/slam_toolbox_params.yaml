@@ -1,0 +1,33 @@
+# slam_toolbox async params for house_cleaner fake_sim stack
+# Robot: turtlebot3_burger model, fake_sim publishes /scan (360 rays, 0.1-10m),
+#        /odom (odom->base_footprint TF), /tf.
+# SLAM publishes map->odom TF + /map occupancy grid.
+slam_toolbox:
+  ros__parameters:
+    use_sim_time: false
+    mode: mapping
+
+    # Frames
+    map_frame_name: map
+    odom_frame_name: odom
+    base_frame_name: base_footprint
+
+    # Input
+    scan_topic: /scan
+    scan_period: 0.1
+    max_laser_range: 10.0
+    resolution: 0.05
+
+    # Publishing
+    throttle_scans: 1
+    transform_publish_period: 0.02
+    map_update_interval: 5.0
+    minimum_time_interval: 0.5
+    transform_timeout: 0.2
+    tf_buffer_duration: 30.0
+
+    # Scan matching
+    use_scan_matching: true
+    use_scan_barycenter: true
+    minimum_travel_distance: 0.5
+    minimum_travel_heading: 0.5
