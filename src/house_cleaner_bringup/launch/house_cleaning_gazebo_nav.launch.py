@@ -15,7 +15,7 @@
 #                                     bt_navigator, behavior_server, ...)
 #
 # The map is the SLAM result saved earlier; it now ships with the package
-# at config/single_room_map.yaml (copy of the SLAM save). The robot spawns at
+# at config/house_room_map.yaml (copy of the SLAM save). The robot spawns at
 # world (0,0) yaw 0, which is also its start pose in the map frame, so amcl
 # initial_pose matches the spawn. Override with map:=/path/to/other_map.yaml.
 

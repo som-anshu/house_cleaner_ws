@@ -14,8 +14,8 @@ setup(
             'config/nav2_params.yaml',
             'config/slam_toolbox_params.yaml',
             'config/slam_toolbox_gazebo_params.yaml',
-            'config/single_room_map.yaml',
-            'config/single_room_map.pgm']),
+            'config/house_room_map.yaml',
+            'config/house_room_map.pgm']),
         ('share/house_cleaner_bringup/launch', [
             'launch/house_cleaning_fake_sim.launch.py',
             'launch/gazebo_house_cleaning.launch.py',

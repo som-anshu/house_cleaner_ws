@@ -11,8 +11,8 @@
 # After mapping:
 #   ros2 run nav2_map_server map_saver_cli -f /tmp/house_map
 #
-# Then navigate on the saved map with house_cleaning_fake_sim.launch.py
-# (repoint its map yaml) — or run the nav stack against this sim.
+# Then navigate on the saved map with house_cleaning_gazebo_nav.launch.py
+# (it defaults to config/house_room_map.yaml).
 
 import os
 

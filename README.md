@@ -76,7 +76,7 @@ Key files:
 - `config/burger_bridge.yaml` — Gazebo topic bridge (`/cmd_vel` is plain
   `geometry_msgs/Twist`, which Nav2 publishes; the stock TurtleBot bridge
   uses TwistStamped and does not work with Nav2)
-- `config/single_room_map.yaml` — saved SLAM map for the localization variant
+- `config/house_room_map.yaml` — saved SLAM map for the localization variant
 - `env.sh` — canonical environment (see Troubleshooting)
 
 ## Troubleshooting

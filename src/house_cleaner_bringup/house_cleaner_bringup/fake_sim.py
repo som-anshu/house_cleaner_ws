@@ -238,8 +238,8 @@ class FakeSim(Node):
         scan = LaserScan()
         scan.header.stamp = now.to_msg()
         scan.header.frame_id = 'base_scan'
-        scan.angle_min = -math.pi
-        scan.angle_max = math.pi
+        scan.angle_min = 0.0
+        scan.angle_max = 2.0 * math.pi
         scan.angle_increment = math.pi / 180.0
         scan.range_min = 0.1
         scan.range_max = 10.0
@@ -247,7 +247,7 @@ class FakeSim(Node):
         scan.intensities = []
         
         for i in range(360):
-            angle = -math.pi + i * math.pi / 180.0
+            angle = i * math.pi / 180.0
             dist = self.cast_ray(self.x, self.y, self.yaw + angle)
             scan.ranges.append(dist)
             scan.intensities.append(100.0)

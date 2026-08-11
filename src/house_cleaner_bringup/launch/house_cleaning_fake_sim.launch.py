@@ -31,7 +31,7 @@ def generate_launch_description():
             name='map_server', output='screen',
             parameters=[
                 {'use_sim_time': use_sim_time},
-                {'yaml_filename': os.path.join(BRINGUP, 'config', 'single_room_map.yaml')},
+                {'yaml_filename': os.path.join(BRINGUP, 'config', 'house_room_map.yaml')},
                 {'topic_name': 'map'},
                 {'frame_id': 'map'},
             ],
