@@ -234,9 +234,9 @@ global_costmap:
       robot_radius: 0.22
       resolution: 0.05
       track_unknown_space: true
-      # Map size: 4.65m x 5.75m with 0.05m resolution = 93x115 cells
-      width: 4.65
-      height: 5.75
+      # Map: 4.65m x 5.75m @ 0.05m/cell = 93 x 115 cells
+      width: 93
+      height: 115
       origin_x: -1.195
       origin_y: -2.385
       plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
