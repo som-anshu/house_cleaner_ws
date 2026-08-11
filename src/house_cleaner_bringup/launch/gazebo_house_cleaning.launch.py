@@ -19,10 +19,11 @@
 #   # with Gazebo GUI:
 #   ros2 launch house_cleaner_bringup gazebo_house_cleaning.launch.py headless:=false
 #
-# NOTE on cmd_vel: the turtlebot3 burger bridge maps /cmd_vel as
-# geometry_msgs/TwistStamped (ROS->GZ). To drive: publish TwistStamped, e.g.
-#   ros2 topic pub -r 10 /cmd_vel geometry_msgs/msg/TwistStamped \
-#     "{twist: {linear: {x: 0.2}, angular: {z: 0.0}}}"
+# NOTE on cmd_vel: the bridge maps /cmd_vel as plain geometry_msgs/Twist
+# (config/burger_bridge.yaml), so Nav2's controller_server can drive directly.
+# To drive manually:
+#   ros2 topic pub -r 10 /cmd_vel geometry_msgs/msg/Twist \
+#     "{linear: {x: 0.2}, angular: {z: 0.0}}"
 
 import os
 
@@ -35,6 +36,7 @@ from launch.conditions import UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch.substitutions import PathJoinSubstitution
+from launch_ros.actions import Node
 
 
 def generate_launch_description():
@@ -75,12 +77,34 @@ def generate_launch_description():
         launch_arguments={'use_sim_time': use_sim_time}.items()
     )
 
-    # 3+4. Spawn burger + start topic bridge (also starts ros_gz_image if cam model)
-    spawn_turtlebot_cmd = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(tbg, 'launch', 'spawn_turtlebot3.launch.py')
-        ),
-        launch_arguments={'x_pose': x_pose, 'y_pose': y_pose}.items()
+    # 3+4. Spawn burger + start topic bridge.
+    # Not via turtlebot3_gazebo's spawn_turtlebot3.launch.py: its bridge config
+    # is hardcoded to the stock turtlebot3_burger_bridge.yaml, which maps
+    # /cmd_vel as TwistStamped — Nav2 controller_server cannot publish that.
+    # We spawn explicitly and run our own parameter_bridge with
+    # config/burger_bridge.yaml (cmd_vel = plain geometry_msgs/Twist).
+    spawn_turtlebot_cmd = Node(
+        package='ros_gz_sim',
+        executable='create',
+        arguments=[
+            '-name', 'turtlebot3_burger',
+            '-file', os.path.join(tbg, 'models', 'turtlebot3_burger', 'model.sdf'),
+            '-x', x_pose,
+            '-y', y_pose,
+            '-z', '0.01',
+        ],
+        output='screen',
+    )
+
+    bridge_cmd = Node(
+        package='ros_gz_bridge',
+        executable='parameter_bridge',
+        arguments=[
+            '--ros-args',
+            '-p',
+            f'config_file:={os.path.join(BRINGUP, "config", "burger_bridge.yaml")}',
+        ],
+        output='screen',
     )
 
     # House model must resolve from the local share dir, not fuel.gazebosim.org
@@ -113,6 +137,7 @@ def generate_launch_description():
     ld.add_action(gzserver_cmd)
     ld.add_action(robot_state_publisher_cmd)
     ld.add_action(spawn_turtlebot_cmd)
+    ld.add_action(bridge_cmd)
     ld.add_action(gzclient_cmd)
 
     return ld
