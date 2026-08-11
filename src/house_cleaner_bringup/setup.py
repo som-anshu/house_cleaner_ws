@@ -11,13 +11,21 @@ setup(
         ('share/house_cleaner_bringup', ['package.xml']),
         ('share/house_cleaner_bringup/config', [
             'config/burger_bridge.yaml',
-            'config/nav2_params.yaml']),
+            'config/nav2_params.yaml',
+            'config/slam_toolbox_params.yaml',
+            'config/slam_toolbox_gazebo_params.yaml']),
         ('share/house_cleaner_bringup/launch', [
             'launch/house_cleaning_fake_sim.launch.py',
             'launch/gazebo_house_cleaning.launch.py',
+            'launch/house_cleaning_slam.launch.py',
+            'launch/house_cleaning_gazebo_slam.launch.py',
+            'launch/house_cleaning_gazebo_nav.launch.py',
+            'launch/house_cleaning_auto.launch.py',
         ]),
         ('share/house_cleaner_bringup/worlds', [
             'worlds/house_cleaner.world',
+            'worlds/single_room.world',
+            'worlds/house_room.world',
         ]),
         ('share/house_cleaner_bringup/models/wall', [
             'models/wall/model.config',
@@ -35,4 +43,9 @@ setup(
     license='MIT',
     tests_require=['pytest'],
     test_suite='test',
+    entry_points={
+        'console_scripts': [
+            'house_cleaner_assistant = house_cleaner_bringup.house_cleaner_assistant:main',
+        ],
+    },
 )
