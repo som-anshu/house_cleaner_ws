@@ -45,9 +45,9 @@ from nav_msgs.msg import Odometry, OccupancyGrid
 from nav2_msgs.action import NavigateToPose
 from tf2_ros import TransformListener, Buffer
 
-# Room interior (world == initial map frame)
-X_MIN, X_MAX = -1.95, 1.95
-Y_MIN, Y_MAX = -2.5, 2.5
+# Room interior (world == initial map frame; matches house_room.world walls)
+X_MIN, X_MAX = -2.25, 2.25
+Y_MIN, Y_MAX = -2.65, 2.65
 
 # Dock geometry (map frame; override with params dock.x / dock.y / dock.yaw)
 DOCK_CENTER = (0.0, 2.75)
