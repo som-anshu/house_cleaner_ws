@@ -45,9 +45,7 @@ def generate_launch_description():
                 {'use_sim_time': use_sim_time},
                 {'initial_pose.x': 0.0},
                 {'initial_pose.y': 0.0},
-                {'initial_pose.z': 0.0},
-                {'initial_pose.orientation.z': 0.0},
-                {'initial_pose.orientation.w': 1.0},
+                {'initial_pose.yaw': 0.0},
                 {'base_frame_id': 'base_footprint'},
             ],
         ),
@@ -122,6 +120,24 @@ def generate_launch_description():
         ),
         
         Node(
+            package='nav2_smoother', executable='smoother_server',
+            name='smoother_server', output='screen',
+            parameters=[
+                nav_params_file,
+                {'use_sim_time': use_sim_time},
+            ],
+        ),
+
+        Node(
+            package='nav2_collision_monitor', executable='collision_monitor',
+            name='collision_monitor', output='screen',
+            parameters=[
+                nav_params_file,
+                {'use_sim_time': use_sim_time},
+            ],
+        ),
+
+        Node(
             package='nav2_lifecycle_manager', executable='lifecycle_manager',
             name='lifecycle_manager_navigation', output='screen',
             parameters=[
@@ -129,8 +145,9 @@ def generate_launch_description():
                 {'autostart': True},
                 {'autostart_delay': autostart_delay},
                 {'node_names': [
-                    'controller_server', 'planner_server', 'behavior_server',
-                    'bt_navigator', 'waypoint_follower', 'velocity_smoother',
+                    'smoother_server', 'controller_server', 'planner_server',
+                    'behavior_server', 'bt_navigator', 'waypoint_follower',
+                    'velocity_smoother', 'collision_monitor',
                 ]},
             ],
         ),

@@ -3,9 +3,10 @@
 # gazebo_house_cleaning.launch.py
 #
 # Real-sensor simulation wrapper: TurtleBot3 burger in a simple single-room
-# Gazebo world (worlds/house_room.world, interior 4.65x5.75 m — furniture
-# obstacles + charging dock, matching the shipped SLAM map). Pass
-# world:=turtlebot3_house.world for the ROBOTIS house world instead.
+# Gazebo world: worlds/house_room.world (interior 4.65x5.75 m — furniture
+# obstacles + charging dock, matching the shipped SLAM map). Override
+# world:=<name> only with a file shipped inside BRINGUP/worlds — the path
+# resolves exclusively under this package's share dir.
 #
 # Flow (mirrors ROBOTIS Gazebo simulation tutorial):
 #   1. gz-sim server loads the world (-r -s headless; GUI optional)

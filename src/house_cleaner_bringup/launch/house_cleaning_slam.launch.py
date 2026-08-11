@@ -6,7 +6,6 @@ from launch.substitutions import LaunchConfiguration
 import os
 
 def generate_launch_description():
-    use_sim_time = False
     BRINGUP = get_package_share_directory('house_cleaner_bringup')
 
     return LaunchDescription([

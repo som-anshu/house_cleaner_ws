@@ -46,7 +46,8 @@ Watch it live: `rviz2` + Map/TF displays on the live `/map`, or launch with
 | `house_cleaning_auto.launch.py` | **the demo** — Gazebo + SLAM + Nav2 + assistant |
 | `house_cleaning_gazebo_nav.launch.py` | Nav2 on the saved map (map_server + AMCL); no SLAM; navigate on a known room |
 | `house_cleaning_gazebo_slam.launch.py` | Gazebo + SLAM only — drive around to build/check a map |
-| `house_cleaning_fake_sim.launch.py` | legacy no-Gazebo sandbox (synthetic odom) |
+| `house_cleaning_fake_sim.launch.py` | no-Gazebo Nav2 sandbox (synthetic odom + scan; same server chain as the auto variant) |
+| `house_cleaning_slam.launch.py` | no-Gazebo SLAM sandbox (fake sim + slam_toolbox) |
 
 ## Architecture
 

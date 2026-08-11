@@ -20,6 +20,5 @@ export TURTLEBOT3_MODEL=burger
 export ROS_DOMAIN_ID=30
 export AMENT_PREFIX_PATH="\
 /home/koko/house_cleaner_ws/install/house_cleaner_bringup:\
-/home/koko/house_cleaner_ws/install/house_cleaner_description:\
 /home/koko/house_cleaner_ws/install:\
 /opt/ros/jazzy"
