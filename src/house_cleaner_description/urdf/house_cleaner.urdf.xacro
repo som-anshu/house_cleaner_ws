@@ -1,0 +1,114 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://ros.org/wiki/xacro" name="house_cleaner">
+
+  <!-- TurtleBot3 Burger URDF Definition -->
+  <!-- Base links -->
+  <link name="base_footprint">
+    <visual>
+      <geometry>
+        <box size="0.3 0.3 0.01"/>
+      </geometry>
+      <material name="black"/>
+    </visual>
+  </link>
+
+  <link name="base_link">
+    <visual>
+      <geometry>
+        <cylinder length="0.15" radius="0.18"/>
+      </geometry>
+      <material name="blue"/>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder length="0.15" radius="0.18"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="1.0"/>
+      <inertia ixx="0.01" ixy="0.0" ixz="0.0" iyy="0.01" iyz="0.0" izz="0.01"/>
+    </inertial>
+  </link>
+
+  <joint name="fixed_joint" type="fixed">
+    <parent link="base_footprint"/>
+    <child link="base_link"/>
+    <origin xyz="0 0 0.075"/>
+  </joint>
+
+  <!-- Wheels -->
+  <link name="wheel_body">
+    <visual>
+      <geometry>
+        <cylinder length="0.06" radius="0.065"/>
+      </geometry>
+      <material name="gray"/>
+    </visual>
+  </link>
+
+  <joint name="wheel1_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="wheel_body"/>
+    <axis xyz="0 0 1"/>
+    <origin xyz="0.14 0.18 0.0"/>
+  </joint>
+
+  <joint name="wheel2_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="wheel_body"/>
+    <axis xyz="0 0 1"/>
+    <origin xyz="0.14 -0.18 0.0"/>
+  </joint>
+
+  <joint name="wheel3_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="wheel_body"/>
+    <axis xyz="0 0 1"/>
+    <origin xyz="-0.14 0.18 0.0"/>
+  </joint>
+
+  <joint name="wheel4_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="wheel_body"/>
+    <axis xyz="0 0 1"/>
+    <origin xyz="-0.14 -0.18 0.0"/>
+  </joint>
+
+  <!-- Lidar -->
+  <link name="laser">
+    <visual>
+      <geometry>
+        <cylinder length="0.05" radius="0.03"/>
+      </geometry>
+      <material name="silver"/>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder length="0.05" radius="0.03"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="laser_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="laser"/>
+    <origin xyz="0.18 0.0 0.135" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Camera -->
+  <link name="camera">
+    <visual>
+      <geometry>
+        <box size="0.05 0.05 0.05"/>
+      </geometry>
+      <material name="silver"/>
+    </visual>
+  </link>
+
+  <joint name="camera_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="camera"/>
+    <origin xyz="0.1 0.0 0.135" rpy="0 0 0"/>
+  </joint>
+
+</robot>

@@ -1,0 +1,32 @@
+# Build / install artifacts
+build/
+install/
+log/
+
+# Colcon / CMake
+**/CMakeCache.txt
+**/CMakeFiles/
+**/*.cmake.user
+**/compile_commands.json
+**/ament_cmake_*
+**/package.cmake
+
+# Python caches
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/*.egg-info/
+install/lib/**/__pycache__/
+
+# Launch parameter temp files (ros2 launch --params-file /tmp/...)
+/tmp/launch_params_*
+
+# Editor / OS
+**/*.swp
+**/.DS_Store
+.idea/
+.vscode/
+
+# Local environment / secrets
+*.local
+.env
