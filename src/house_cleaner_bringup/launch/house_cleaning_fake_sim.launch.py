@@ -67,9 +67,9 @@ def generate_launch_description():
             parameters=[
                 nav_params_file,
                 {'use_sim_time': use_sim_time},
-                {'controller_frequency': 20.0},
                 {'base_frame_id': 'base_footprint'},
             ],
+            remappings=[('/cmd_vel', 'cmd_vel_nav')],
         ),
         
         Node(
@@ -117,6 +117,7 @@ def generate_launch_description():
                 nav_params_file,
                 {'use_sim_time': use_sim_time},
             ],
+            remappings=[('/cmd_vel', 'cmd_vel_nav')],
         ),
         
         Node(
