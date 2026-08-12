@@ -1,99 +1,247 @@
-# house_cleaner_ws — Autonomous House-Cleaning Robot (ROS 2 Jazzy + Gazebo Harmonic)
+# House Cleaner Robot
 
-Simulation of a TurtleBot3 Burger that autonomously cleans any unknown room:
+Autonomous room-cleaning robot built on **ROS 2 Jazzy** with a **TurtleBot3 Burger** model. It cleans rooms autonomously using boustrophedon coverage, manages battery life, and returns to a charging dock when needed.
 
-- **Live SLAM** (slam_toolbox) — no prebuilt map; the room is mapped as the
-  robot drives, so the same stack works in any room.
-- **Coverage cleaning** — boustrophedon lanes over the live map, executed as
-  Nav2 navigation goals (sofa, coffee table, plant, crates as obstacles).
-- **Auto-charging** — at low battery the robot cancels cleaning, navigates to
-  its dock, laser-guided docking creep, recharge, and resumes where it left
-  off. It also returns to dock and parks after coverage is complete.
-- Battery is simulated by the assistant node (no Gazebo plugin needed) and
-  published on `/battery_state`.
+## What It Does
 
-Verified end to end: 16/16 coverage goals, low-battery return, docking,
-recharge, resume, final park.
+- **Autonomous coverage cleaning**: Plans a boustrophedon mission from the live SLAM map and executes it goal-by-goal through Nav2.
+- **Live SLAM mapping**: Uses `slam_toolbox` in `mapping` mode to build an occupancy map in an unknown room — no prebuilt map required for the cleaning run.
+- **Battery simulation**: Battery drains while driving, is published on `/battery_state`, and triggers an automatic return-to-dock when it drops below a threshold.
+- **Auto-docking**: Navigates to a dock approach pose, then performs a laser-guided final creep into the dock. While docked, the battery recharges. After reaching the charge target, the robot undocks and resumes cleaning.
+- **Obstacle avoidance**: Sofa, coffee table, plant, and crates are mapped during SLAM and avoided by Nav2 costmaps.
+- **Two simulation paths**:
+  - `fake_sim.py` — lightweight synthetic odom + 360-ray laser for fast Nav2 iteration.
+  - Gazebo Harmonic — physics-accurate single-room world with TurtleBot3 Burger URDF and LDS sensor.
 
-## Quick start
+## Repository Layout
 
-```bash
-export TURTLEBOT3_MODEL=burger
-source env.sh
-ros2 launch house_cleaner_bringup house_cleaning_auto.launch.py
+```
+src/house_cleaner_bringup/
+├── launch/
+│   ├── house_cleaning_auto.launch.py          ← primary launcher (Gazebo + SLAM + Nav2 + assistant)
+│   ├── house_cleaning_fake_sim.launch.py      ← fake_sim + AMCL + Nav2 (no Gazebo)
+│   ├── house_cleaning_slam.launch.py          ← SLAM-only mapping launch
+│   ├── house_cleaning_gazebo_nav.launch.py    ← Gazebo + prebuilt map + AMCL + Nav2
+│   └── gazebo_house_cleaning.launch.py        ← Gazebo world + burger spawn + bridge
+├── config/
+│   ├── nav2_params.yaml                       ← Nav2 costmaps, planners, controllers, collision monitor
+│   ├── house_room_map.yaml / house_room_map.pgm ← prebuilt 100x116 map (origin -2.325, -2.875)
+│   ├── slam_toolbox_params.yaml               ← SLAM params for fake_sim
+│   └── slam_toolbox_gazebo_params.yaml        ← SLAM params for Gazebo
+├── house_cleaner_bringup/
+│   ├── house_cleaner_assistant.py             ← mission supervisor, battery, docking
+│   └── fake_sim.py                            ← synthetic odom + 360-ray LaserScan publisher
+└── worlds/
+    └── house_room.world                       ← 4.65 x 5.75 m room, obstacles, charging dock
 ```
 
-Tunable launch args: `battery_drain_rate:=0.2` (%/s while driving),
-`battery_charge_rate:=0.8` (%/s while docked), `battery_low_threshold:=35.0`,
-`battery_charge_target:=95.0`, `headless:=false` (Gazebo GUI).
+## Key Concepts
 
-Fast demo cycle (drains in a couple of minutes instead of ~15):
+### Coverage Bounds
+
+The cleaning area is derived from the live SLAM map window at runtime. `_coverage_bounds(grid)` reads the map metadata and computes a rectangle with a safety margin. No room dimensions are hardcoded in the assistant.
+
+### Battery & Docking
+
+Battery is simulated entirely in `house_cleaner_assistant.py`. Parameters are exposed as ROS parameters so they can be tuned at launch:
+
+| Parameter | Default | Role |
+|-----------|---------|------|
+| `battery.drain_rate` | `0.20 %/s` | Drain while driving |
+| `battery.charge_rate` | `0.80 %/s` | Charge while docked |
+| `battery.low_threshold` | `35.0 %` | Trigger return to dock |
+| `battery.charge_target` | `95.0 %` | Resume cleaning after charge |
+| `mission.strip_width` | `0.60 m` | Boustrophedon lane spacing |
+
+Dock geometry (map frame):
+
+- Dock body center: `(0.0, 2.75)`, south face at `y = 2.625`
+- Approach pose: `(0.0, 1.87)` yaw `+pi/2`
+- `creep_to_dock` stops when front laser reads `< 0.13 m` (seated)
+- `undock` backs out `~0.48 m` to clear dock inflation
+
+### Nav2 Stack
+
+The auto launch wires Nav2 manually (no `nav2_bringup`):
+
+- `map_server` (prebuilt map)
+- `amcl` (localization on the saved map)
+- `planner_server` — `NavfnPlanner`
+- `controller_server` — `FollowPath` (MPPI), `controller_frequency: 20.0`
+- `behavior_server` — backup, spin, wait
+- `bt_navigator` — BT-based `NavigateToPose` / `NavigateThroughPoses`
+- `waypoint_follower` — `FollowWaypoints`
+- `velocity_smoother` — `/cmd_vel_nav` → `/cmd_vel_smoothed`
+- `collision_monitor` — reads costmap, outputs `/cmd_vel`
+- `lifecycle_manager_navigation` — manage all Nav2 nodes
+
+cmd_vel chain (verified live):
+
+```
+controller_server -> /cmd_vel_nav -> velocity_smoother -> /cmd_vel_smoothed
+  -> collision_monitor -> /cmd_vel -> gz bridge -> robot
+```
+
+### SLAM
+
+Two SLAM parameter files exist because `use_sim_time` and sensor range differ:
+
+| Variant | File | `use_sim_time` | `max_laser_range` |
+|---------|------|----------------|-------------------|
+| fake_sim | `slam_toolbox_params.yaml` | `false` | `10.0` |
+| Gazebo | `slam_toolbox_gazebo_params.yaml` | `true` | `4.0` |
+
+Frames used everywhere: `map`, `odom`, `base_footprint`, `base_scan`.
+
+## Hardware / Simulation Targets
+
+- ROS distro: **Jazzy**
+- Robot model: **TurtleBot3 Burger**
+- Simulators: **Gazebo Harmonic** + custom `fake_sim.py`
+- SLAM: **slam_toolbox** (async)
+- Navigation: **Nav2**
+
+## Prerequisites
+
+```bash
+# ROS 2 Jazzy
+sudo apt install ros-jazzy-desktop
+sudo apt install ros-jazzy-turtlebot3 ros-jazzy-turtlebot3-gazebo
+sudo apt install ros-jazzy-slam-toolbox ros-jazzy-navigation2 ros-jazzy-nav2-bringup
+```
+
+Environment variables:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+export TURTLEBOT3_MODEL=burger
+export ROS_DOMAIN_ID=30
+```
+
+## Build
+
+```bash
+cd /home/koko/house_cleaner_ws
+colcon build --symlink-install --cmake-args "-DPython3_EXECUTABLE=/usr/bin/python3" --packages-select house_cleaner_bringup
+source env.sh   # workspace hook — required for this old colcon
+```
+
+## Launch
+
+### 1) Auto-cleaning mission (Gazebo GUI + SLAM + Nav2 + assistant)
+
+```bash
+tmux kill-session -t house_auto 2>/dev/null
+tmux new-session -d -s house_auto \
+  "source /opt/ros/jazzy/setup.bash && \
+   source /home/koko/house_cleaner_ws/env.sh && \
+   ros2 launch house_cleaner_bringup house_cleaning_auto.launch.py headless:=false"
+```
+
+- `headless:=true` (default) runs Gazebo headless.
+- Battery drain/charge rates can be overridden at launch for faster demo cycles:
 
 ```bash
 ros2 launch house_cleaner_bringup house_cleaning_auto.launch.py \
   battery_drain_rate:=0.6 battery_charge_rate:=1.5
 ```
 
-Watch it live: `rviz2` + Map/TF displays on the live `/map`, or launch with
-`headless:=false` for the Gazebo GUI. Assistant logs print mission state
-(`CLEANING goal n/16`, `LOW BATTERY`, `DOCKED`, `CHARGING`,
-`Staying docked (mission done)`).
+Logs: `/tmp/house_auto.log` and `~/.ros/log/...`.
 
-## Other launch variants
+### 2) Fake-sim Nav2 only (fast, no Gazebo)
 
-| Launch | What it runs |
-|---|---|
-| `house_cleaning_auto.launch.py` | **the demo** — Gazebo + SLAM + Nav2 + assistant |
-| `house_cleaning_gazebo_nav.launch.py` | Nav2 on the saved map (map_server + AMCL); no SLAM; navigate on a known room |
-| `house_cleaning_gazebo_slam.launch.py` | Gazebo + SLAM only — drive around to build/check a map |
-| `house_cleaning_fake_sim.launch.py` | no-Gazebo Nav2 sandbox (synthetic odom + scan; same server chain as the auto variant) |
-| `house_cleaning_slam.launch.py` | no-Gazebo SLAM sandbox (fake sim + slam_toolbox) |
-
-## Architecture
-
-```
-Gazebo (house_room.world, burger, dock, furniture)
-  │  /clock /odom /scan /tf  (ros_gz_bridge, plain-Twist /cmd_vel)
-  ▼
-slam_toolbox ──(async)──► /map + map->odom        Nav2 (planner, controller,
-  │                                                   smoother, collision_monitor,
-  ▼                                                   bt_navigator, waypoints)
-house_cleaner_assistant ──NavigateToPose goals──►
-  ├─ wait_for_map (SLAM live) → boustrophedon grid → 16 goals
-  ├─ watchdog: battery <= threshold → cancel goal → return to dock
-  ├─ creep_to_dock: laser-guided approach + seating verification
-  ├─ recharge to target → resume cleaning
-  └─ final park when coverage done
+```bash
+source /opt/ros/jazzy/setup.bash
+source /home/koko/house_cleaner_ws/env.sh
+ros2 launch house_cleaner_bringup house_cleaning_fake_sim.launch.py
 ```
 
-Key files:
+### 3) SLAM-only mapping
 
-- `house_cleaner_bringup/house_cleaner_assistant.py` — mission logic
-- `worlds/house_room.world` — room (4.65×5.75 m interior), obstacles, dock
-- `config/nav2_params.yaml` — Nav2 tuning (global costmap has no fixed
-  bounds — it must follow the growing SLAM map)
-- `config/slam_toolbox_gazebo_params.yaml` — SLAM params
-- `config/burger_bridge.yaml` — Gazebo topic bridge (`/cmd_vel` is plain
-  `geometry_msgs/Twist`, which Nav2 publishes; the stock TurtleBot bridge
-  uses TwistStamped and does not work with Nav2)
-- `config/house_room_map.yaml` — saved SLAM map for the localization variant
-- `env.sh` — canonical environment (see Troubleshooting)
+```bash
+ros2 launch house_cleaner_bringup house_cleaning_slam.launch.py
+```
+
+Drive the robot with `/cmd_vel` in a boustrophedon sweep, then save the map:
+
+```bash
+ros2 run nav2_map_server map_saver_cli -f ~/slam_map
+```
+
+### 4) Gazebo + prebuilt map + AMCL
+
+```bash
+ros2 launch house_cleaner_bringup house_cleaning_gazebo_nav.launch.py \
+  headless:=false map:=/path/to/slam_map.yaml
+```
+
+## Verify
+
+```bash
+# Topics
+ros2 topic list | grep -E '/(cmd_vel|map|scan|odom|tf|battery_state|dock_pose)'
+
+# Lifecycle nodes
+ros2 lifecycle get /slam_toolbox
+ros2 lifecycle get /map_server
+ros2 lifecycle get /controller_server
+
+# Send a test goal
+ros2 action send_goal /navigate_to_pose nav2_msgs/action/NavigateToPose \
+  "{pose: {header: {frame_id: map}, pose: {position: {x: 0.0, y: 1.0, z: 0.0}, orientation: {x: 0, y: 0, z: 0, w: 1}}}}"
+```
+
+## Cleaning Mission Flow
+
+1. **CLEANING** — assistant generates a 16-goal boustrophedon mission from the live SLAM map bounds and sends each goal sequentially via `/navigate_to_pose`.
+2. **Battery drain** — simulated at `battery.drain_rate` while the robot is moving; `/battery_state` publishes current percentage.
+3. **Low battery** — when battery drops below `battery.low_threshold`, the current goal is canceled and the state switches to **RETURNING**.
+4. **RETURNING** — assistant navigates to the dock approach pose `(0.0, 1.87)`.
+5. **DOCKING** — robot performs a slow laser-guided forward creep (`creep_to_dock`) until the front laser reads `< 0.13 m` (seated against dock).
+6. **CHARGING** — battery recharges at `battery.charge_rate` until it reaches `battery.charge_target`.
+7. **UNDOCKING** — robot backs out `~0.48 m` to clear the dock inflation zone.
+8. **RESUME** — mission continues from the next uncovered goal.
+9. **Mission complete** — when all goals are reached, the robot returns to dock and stays.
+
+## World Geometry
+
+- Room interior: `4.65 m x 5.75 m`
+- Wall interior: `x ∈ [-2.325, 2.325]`, `y ∈ [-2.875, 2.875]`
+- Map: `100 x 116` px @ `0.05 m/px`, origin `[-2.325, -2.875, 0]`
+- Coverage margin: `0.37 m` from walls
+- Obstacles: sofa, coffee table, plant, crate A, crate B — all static, mapped by SLAM
+- Dock: centered at `(0.0, 2.75)`, south face at `y = 2.625`
+
+## Important Notes
+
+- **Always kill stale ROS2 / Gazebo / RViz processes before relaunching.** Overlapping instances cause stale TF caches and port conflicts.
+- **Re-source `/opt/ros/jazzy/setup.bash` in every new terminal.** `PYTHONPATH` does not survive across sessions.
+- **Use `source env.sh`**, not just `install/setup.bash`. The workspace colcon hook is required for package prefix resolution.
+- **`fake_sim.py` has no `ros2 run` entry point.** It is launched via the launch file or run directly as a Python script.
+- **GitHub HTTPS API is proxy-blocked from this machine.** All git operations use SSH (`git@github.com:som-anshu/house_cleaner_ws.git`).
 
 ## Troubleshooting
 
-- **Always `source env.sh`, not `install/setup.bash`.** This host's colcon
-  (< 1.5) writes hook-style `package.dsv` files that drop the
-  `AMENT_PREFIX_PATH` chain, so `ros2 launch house_cleaner_bringup ...` fails
-  with "Package not found" otherwise. `env.sh` prepends the workspace package
-  prefixes explicitly.
-- **Kill stale instances before relaunching**: `tmux kill-session -t
-  house_auto` (if using tmux) and kill leftover `gz sim` / `ros2 launch`
-  processes — overlapping sims corrupt TF and costmaps.
-- **Rebuild after editing config/launch/worlds**: launch files resolve these
-  via the installed share dir, and on this host the install is real files
-  (not symlinks), so `colcon build --packages-select house_cleaner_bringup`
-  is needed to propagate edits.
-- Nav2 goal status (Jazzy): 4 = SUCCEEDED, 5 = CANCELED, 6 = ABORTED.
-- LDS scan index 0 is the robot's *forward* (angle 0), index 180 the back.
-- The dock sits on the floor (z = 0); a floating dock passes under the robot
-  body and the lidar never sees it.
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `planner_server` crashes at launch | Costmap `width`/`height` must be integer cells | Use `93 x 115` (cells), not `4.65 x 5.75` (meters) |
+| Gazebo launch exits -9 | controller_server crash, missing `/world/.../create` service | Use fake-sim launch instead |
+| AMCL warns "Failed to transform initial pose in time" | Cosmetic — fake_sim `/initialpose` timestamp slightly off | Safe to ignore; `transform_tolerance: 1.0` absorbs it |
+| Action clients fail with "context is invalid" | Stale ROS nodes after long run or overlapping instances | Kill all processes and relaunch fresh |
+| `/tf` empty or stale | Multiple overlapping node instances | Kill all, relaunch one |
+| `ros2` command not found | Env not sourced in new terminal | `source /opt/ros/jazzy/setup.bash` |
+
+## Status
+
+- ✅ Autonomous boustrophedon coverage from live SLAM map
+- ✅ Battery simulation with `/battery_state`
+- ✅ Auto-return, laser-guided dock, charge, undock, resume
+- ✅ Obstacle mapping and avoidance
+- ✅ Two simulation paths (fake_sim + Gazebo Harmonic)
+- ✅ SLAM mapping with map save/load
+- ✅ All 9 Nav2 nodes + lifecycle manager verified
+- ✅ Git repo on GitHub (SSH)
+
+## License
+
+Student project — no license specified.
