@@ -37,6 +37,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
 from rclpy.duration import Duration
+from rclpy.qos import QoSProfile, ReliabilityPolicy
 
 from geometry_msgs.msg import Pose, PoseStamped, Point, Quaternion, Twist
 from std_msgs.msg import Header
@@ -123,6 +124,16 @@ class HouseCleanerAssistant(Node):
         self.low_battery_fired = False
         self.last_scan = None
         self._creep_win = []
+
+        # live /map + global costmap for execution-time goal revalidation:
+        # plan-time snapping can't see furniture that reads unknown (-1)
+        # while the map is still sparse, so each goal is re-checked against
+        # the matured map/costmap right before it is sent (see _revalidate_goal)
+        self.last_grid = None
+        self.last_costmap = None
+        self.create_subscription(OccupancyGrid, "/map", self._map_cb, 10)
+        self.create_subscription(OccupancyGrid, "/global_costmap/costmap", self._costmap_cb,
+                                 QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT))
 
         # timers
         self.create_timer(0.2, self.battery_timer_cb)
@@ -217,6 +228,68 @@ class HouseCleanerAssistant(Node):
         if col < 0 or row < 0 or col >= info.width or row >= info.height:
             return None
         return grid.data[row * info.width + col]
+
+    def _map_cb(self, msg):
+        self.last_grid = msg
+
+    def _costmap_cb(self, msg):
+        self.last_costmap = msg
+
+    def _goal_blocked(self, cm, x, y):
+        """True when the robot center cannot occupy world (x, y) at execution time.
+
+        Only Nav2's inscribed-inflation semantics block: cost 253 (inscribed)
+        / 254 (lethal) means the robot's footprint cannot be centered there.
+        Unknown (255) and out-of-window (None) are NOT treated as blocked —
+        the global costmap lags the SLAM map at mission start and goals near
+        walls would otherwise be yanked; the sweep in _revalidate_goal only
+        needs to escape confirmed-lethal cells.
+        """
+        c = self._cell(cm, x, y)
+        return c is not None and c >= 253 and c != 255
+
+    def _occupancy_blocked(self, grid, x, y):
+        """Occupancy fallback: only confirmed-occupied cells block (>= 50).
+
+        Unknown (-1) stays cleanable — the costmap (with live obstacle layer)
+        is the authoritative check; this is just a pre-costmap fallback.
+        """
+        occ = self._cell(grid, x, y)
+        return occ is not None and occ >= 50
+
+    def _revalidate_goal(self, x, y):
+        """Re-check a plan-time goal against the matured map/costmap.
+
+        Returns (x, y, drop) — drop is a reason string when the whole row
+        within the 2 m sweep is blocked (caller skips the goal), else None.
+        Plan-time snapping can't see furniture that still reads unknown at
+        t~5s, so every goal is re-snapped here right before it is sent.
+        """
+        cm = self.last_costmap
+        if cm is not None:
+            blocked = self._goal_blocked
+            src = cm
+        elif self.last_grid is not None:
+            blocked = self._occupancy_blocked
+            src = self.last_grid
+        else:
+            return (x, y, None)  # no data yet — send as planned
+
+        if not blocked(src, x, y):
+            return (x, y, None)
+
+        info = src.info
+        max_cells = int(2.0 / info.resolution)  # 2 m sweep each way
+        for step in range(1, max_cells + 1):
+            for cx in (x + step * info.resolution, x - step * info.resolution):
+                if cx == x:
+                    continue
+                c = self._cell(src, cx, y)
+                if c is None:
+                    continue  # off-window snap target — not a valid escape
+                if not blocked(src, cx, y):
+                    return (cx, y, None)
+        return (x, y, "row blocked within 2 m sweep")
 
     def _snap_to_free(self, grid, x, y):
         """Nearest free cell on row y to (x, y); occupied -> nudge, else None.
@@ -514,6 +587,23 @@ class HouseCleanerAssistant(Node):
                 # _recharge_cycle no longer aborts mission on failure
 
             x, y, yaw = self.goals[self.goal_idx]
+            # execution-time revalidation: the plan-time snap ran against a
+            # sparse map (t~5s) where furniture can still read unknown (-1);
+            # re-check against the matured costmap before actually sending
+            px, py = x, y
+            x, y, drop = self._revalidate_goal(x, y)
+            if (x, y) != (px, py):
+                self.get_logger().warn(
+                    f"  goal {self.goal_idx + 1}/{total} re-snapped "
+                    f"({px:.2f},{py:.2f}) -> ({x:.2f},{y:.2f})"
+                )
+            if drop:
+                self.get_logger().error(
+                    f"  ✗ goal {self.goal_idx + 1}/{total} unreachable ({drop}) — skipping"
+                )
+                self.goal_idx += 1
+                skipped += 1
+                continue
             self.get_logger().info(f"=== CLEANING goal {self.goal_idx + 1}/{total} ===")
             status, err = self.send_goal(x, y, yaw)
             if self.low_battery_fired:
@@ -526,7 +616,16 @@ class HouseCleanerAssistant(Node):
                 self.get_logger().error(
                     f"  ✗ goal {self.goal_idx + 1}/{total} aborted (err={err}) — retrying"
                 )
-                status2, _ = self.send_goal(x, y, yaw)
+                # the aborted goal may itself now be stale — revalidate again
+                x2, y2, drop2 = self._revalidate_goal(x, y)
+                if drop2:
+                    self.get_logger().error(
+                        f"  ✗ goal {self.goal_idx + 1}/{total} unreachable on retry ({drop2}) — skipping"
+                    )
+                    self.goal_idx += 1
+                    skipped += 1
+                    continue
+                status2, _ = self.send_goal(x2, y2, yaw)
                 if status2 == "SUCCEEDED":
                     self.get_logger().info(f"  ✓ goal {self.goal_idx + 1}/{total} done (retry)")
                     self.goal_idx += 1
