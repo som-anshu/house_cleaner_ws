@@ -255,21 +255,27 @@ class HouseCleanerAssistant(Node):
         except Exception:
             return None
 
-    def wait_for_map(self, timeout=60.0):
+    def wait_for_map(self, timeout=120.0):
         """Wait until slam_toolbox publishes a non-empty occupancy grid.
 
         Returns the grid (used to plan the coverage rectangle) or None.
         """
         got = {"grid": None}
+        deadline = self.get_clock().now() + Duration(seconds=timeout)
+        self._map_wait_start = self.get_clock().now()
+        self._map_wait_timeout = timeout
 
         def cb(grid):
             if grid is not None and got["grid"] is None:
                 got["grid"] = grid
 
         sub = self.create_subscription(OccupancyGrid, "/map", cb, 10)
-        deadline = self.get_clock().now() + Duration(seconds=timeout)
         while got["grid"] is None and self.get_clock().now() < deadline:
             rclpy.spin_once(self, timeout_sec=0.5)
+            # Log progress every ~5s so user knows we're alive
+            elapsed = (self.get_clock().now() - self._map_wait_start).nanoseconds / 1e9
+            if int(elapsed) % 5 == 0 and int(elapsed) > 0:
+                self.get_logger().info(f"Waiting for /map... {elapsed:.0f}s / {timeout:.0f}s")
         self.destroy_subscription(sub)
         if got["grid"] is None:
             self.get_logger().error("Timed out waiting for /map from slam_toolbox")
