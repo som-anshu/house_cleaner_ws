@@ -36,7 +36,7 @@ def generate_launch_description():
     headless = LaunchConfiguration('headless', default='true')
     map_yaml = LaunchConfiguration(
         'map',
-        default=os.path.join(BRINGUP, 'config', 'single_room_map.yaml'),
+        default=os.path.join(BRINGUP, 'config', 'house_room_map.yaml'),
     )
 
     gazebo_sim = IncludeLaunchDescription(
@@ -70,7 +70,7 @@ def generate_launch_description():
         'headless', default_value='true',
         description='true = no Gazebo GUI'))
     ld.add_action(DeclareLaunchArgument(
-        'map', default_value=os.path.join(BRINGUP, 'config', 'single_room_map.yaml'),
+        'map', default_value=os.path.join(BRINGUP, 'config', 'house_room_map.yaml'),
         description='Saved SLAM map yaml for localization'))
 
     ld.add_action(gazebo_sim)
