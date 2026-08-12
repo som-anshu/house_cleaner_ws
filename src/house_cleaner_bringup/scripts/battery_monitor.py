@@ -31,24 +31,32 @@ class Monitor(Node):
         battery_str = f'{self.battery_pct:.1f}%' if self.battery_pct is not None else '--'
 
         if self.battery_pct is not None:
-            bar_len = 20
+            bar_len = 16
             filled = int(bar_len * self.battery_pct / 100.0)
             bar = '█' * filled + '░' * (bar_len - filled)
         else:
-            bar = '░' * 20
+            bar = '░' * 16
 
-        elapsed = ''
+        # fixed interior width so the box edges align; width == the
+        # separator/header rows (58 interior chars + 2 border chars).
+        # bar_len 16 keeps room for the "(updated Xs ago)" staleness
+        # text even at 100.0% — that indicator is the monitor's point.
+        content = f'  Battery    : [{bar}] {battery_str}'
         if self.last_battery_update:
             age = (self.get_clock().now() - self.last_battery_update).nanoseconds / 1e9
             elapsed = f' (updated {age:.0f}s ago)'
+            # only append if it fits, else drop — never overflow the box
+            if len(content) + len(elapsed) <= 58:
+                content += elapsed
+        content = content.ljust(58)
 
         output = (
             f'\033[2J\033[H'
             f'╔{"═" * 58}╗\n'
-            f'║  HOUSE CLEANER — BATTERY MONITOR{" " * 24}║\n'
+            f'║' + f'  HOUSE CLEANER — BATTERY MONITOR'.ljust(58) + '║\n'
             f'╠{"═" * 58}╣\n'
-            f'║  Battery    : [{bar}] {battery_str:<10}{elapsed:<18}║\n'
-            f'╚{"═" * 58}╗\n'
+            f'║{content}║\n'
+            f'╚{"═" * 58}╝\n'
         )
 
         if output != self._last_print:
