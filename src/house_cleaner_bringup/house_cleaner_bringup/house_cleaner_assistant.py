@@ -163,8 +163,25 @@ class HouseCleanerAssistant(Node):
         return (x_min, x_max, y_min, y_max)
 
     def _build_goals(self, strip, bounds):
-        """Boustrophedon coverage grid over the given rectangle."""
+        """Boustrophedon coverage grid over the given rectangle.
+
+        Goals are clamped away from the exact bounds by ``strip/2`` so they
+        stay inside the SLAM costmap even while the map is still resizing.
+        """
         x_min, x_max, y_min, y_max = bounds
+        margin = strip / 2.0
+        x_min = x_min + margin
+        x_max = x_max - margin
+        y_min = y_min + margin
+        y_max = y_max - margin
+
+        if x_max <= x_min or y_max <= y_min:
+            self.get_logger().warn(
+                f"Coverage rectangle too small after clamping "
+                f"({x_max - x_min:.2f}x{y_max - y_min:.2f} m) — skipping mission"
+            )
+            return []
+
         goals = []
         y = y_min + strip / 2.0
         row = 0
