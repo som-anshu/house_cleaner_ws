@@ -256,11 +256,11 @@ class FakeSim(Node):
 
 def main(args=None):
     parser = argparse.ArgumentParser()
-    parser.add_argument('--room-width', type=float, default=8.0)
-    parser.add_argument('--room-height', type=float, default=6.0)
-    parser.add_argument('--robot-radius', type=float, default=0.2)
-    parser.add_argument('--map-to-odom-x', type=float, default=0.0)
-    parser.add_argument('--map-to-odom-y', type=float, default=0.0)
+    parser.add_argument('--room-width', type=float, default=4.65)
+    parser.add_argument('--room-height', type=float, default=5.75)
+    parser.add_argument('--robot-radius', type=float, default=0.22)
+    parser.add_argument('--map-to-odom-x', type=float, default=-2.360)
+    parser.add_argument('--map-to-odom-y', type=float, default=-2.914)
     parsed_args, _ = parser.parse_known_args(args)
     
     rclpy.init(args=args)
