@@ -331,12 +331,17 @@ class HouseCleanerAssistant(Node):
                 got["grid"] = grid
 
         sub = self.create_subscription(OccupancyGrid, "/map", cb, 10)
+        last_log = -1
         while got["grid"] is None and self.get_clock().now() < deadline:
             rclpy.spin_once(self, timeout_sec=0.5)
-            # Log progress every ~5s so user knows we're alive
-            elapsed = (self.get_clock().now() - self._map_wait_start).nanoseconds / 1e9
-            if int(elapsed) % 5 == 0 and int(elapsed) > 0:
-                self.get_logger().info(f"Waiting for /map... {elapsed:.0f}s / {timeout:.0f}s")
+            # Log progress once per 5 s bucket so the user knows we're alive
+            # (naive `int(elapsed) % 5 == 0` re-fires every spin within the
+            # same second and floods the log with duplicates).
+            elapsed = int((self.get_clock().now() - self._map_wait_start).nanoseconds / 1e9)
+            bucket = elapsed // 5
+            if bucket > last_log:
+                last_log = bucket
+                self.get_logger().info(f"Waiting for /map... {elapsed}s / {timeout:.0f}s")
         self.destroy_subscription(sub)
         if got["grid"] is None:
             self.get_logger().error("Timed out waiting for /map from slam_toolbox")
@@ -501,6 +506,7 @@ class HouseCleanerAssistant(Node):
             self.get_logger().error("No coverage goals — aborting mission")
             return 2
         total = len(self.goals)
+        skipped = 0
         while self.goal_idx < total:
             if self.low_battery_fired:
                 ok = self._recharge_cycle()
@@ -529,14 +535,23 @@ class HouseCleanerAssistant(Node):
                         f"  ✗ goal {self.goal_idx + 1}/{total} failed twice — skipping"
                     )
                     self.goal_idx += 1
+                    skipped += 1
             elif status in ("TIMEOUT", "NO_SERVER", "REJECTED"):
                 self.get_logger().error(f"  ✗ goal {self.goal_idx + 1}/{total} {status} — skipping")
                 self.goal_idx += 1
+                skipped += 1
             else:  # CANCELED without low battery flag
                 self.get_logger().warn(f"  goal {self.goal_idx + 1}/{total} {status}")
                 self.goal_idx += 1
+                skipped += 1
 
-        self.get_logger().info(f"--- COVERAGE COMPLETE ({total}/{total}) — returning to dock ---")
+        if skipped:
+            self.get_logger().warn(
+                f"--- COVERAGE COMPLETE ({total - skipped}/{total} reached, "
+                f"{skipped} skipped) — returning to dock ---"
+            )
+        else:
+            self.get_logger().info(f"--- COVERAGE COMPLETE ({total}/{total}) — returning to dock ---")
         self._recharge_cycle(final_park=True)
         pose = self.robot_pose_map()
         if pose:

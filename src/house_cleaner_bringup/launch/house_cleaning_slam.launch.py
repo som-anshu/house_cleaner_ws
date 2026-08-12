@@ -28,15 +28,17 @@ def generate_launch_description():
         # NOT via nav2_lifecycle_manager: slam_toolbox inherits plain
         # rclcpp_lifecycle::LifecycleNode (no BondServer), so the manager's
         # bond client can never connect and always logs "unable to be reached
-        # by bond ... Aborting bringup". Wait for the node, then transition.
+        # by bond ... Aborting bringup". Wait on EACH transition succeeding
+        # (120x1s each) — a single-shot get-then-set races a late-registering
+        # node under startup load and wedges the mission forever (mod-16).
         ExecuteProcess(
             cmd=['bash', '-c',
-                 'for i in $(seq 1 30); do '
-                 'ros2 lifecycle get /slam_toolbox >/dev/null 2>&1 && break; '
+                 'for i in $(seq 1 120); do '
+                 'ros2 lifecycle set /slam_toolbox configure >/dev/null 2>&1 && break; '
                  'sleep 1; done; '
-                 'ros2 lifecycle set /slam_toolbox configure; '
-                 'sleep 1; '
-                 'ros2 lifecycle set /slam_toolbox activate'],
+                 'for j in $(seq 1 120); do '
+                 'ros2 lifecycle set /slam_toolbox activate >/dev/null 2>&1 && break; '
+                 'sleep 1; done'],
             output='screen',
         ),
     ])

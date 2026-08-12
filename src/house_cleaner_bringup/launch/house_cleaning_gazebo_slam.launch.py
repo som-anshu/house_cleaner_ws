@@ -58,17 +58,18 @@ def generate_launch_description():
     # rclcpp_lifecycle::LifecycleNode (not nav2_util::LifecycleNode), so it
     # never creates a BondServer. The manager's bond client can therefore
     # NEVER connect, and it always logs "unable to be reached by bond ...
-    # Aborting bringup" no matter how high bond_timeout is set. The wait loop
-    # below polls until the node's lifecycle service exists (Gazebo boots
-    # slower than the node), then configures+activates it.
+    # Aborting bringup" no matter how high bond_timeout is set. Wait on EACH
+    # transition succeeding (120x1s each) — a single-shot get-then-set races
+    # a late-registering node under startup load (Gazebo boots slower than
+    # the node) and wedges the mission forever (mod-16).
     slam_activate = ExecuteProcess(
         cmd=['bash', '-c',
-             'for i in $(seq 1 30); do '
-             'ros2 lifecycle get /slam_toolbox >/dev/null 2>&1 && break; '
+             'for i in $(seq 1 120); do '
+             'ros2 lifecycle set /slam_toolbox configure >/dev/null 2>&1 && break; '
              'sleep 1; done; '
-             'ros2 lifecycle set /slam_toolbox configure; '
-             'sleep 1; '
-             'ros2 lifecycle set /slam_toolbox activate'],
+             'for j in $(seq 1 120); do '
+             'ros2 lifecycle set /slam_toolbox activate >/dev/null 2>&1 && break; '
+             'sleep 1; done'],
         output='screen',
     )
 
