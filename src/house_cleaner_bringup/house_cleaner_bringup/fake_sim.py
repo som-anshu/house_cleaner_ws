@@ -36,7 +36,13 @@ class FakeSim(Node):
         self.vz = 0.0
         
         # Walls for collision [x1, y1, x2, y2] - matching map boundaries
-        # Map origin: [-1.195, -2.385], size: 4.65m x 5.75m
+        # Map origin: [-2.325, -2.875], size: 4.65m x 5.75m interior.
+        # Default map_to_odom (0,0) = room centered at odom origin, which
+        # puts the spawn inside the room interior (walls at +/-2.325/2.875).
+        # OLD defaults (-2.360, -2.914) spawned the robot OUTSIDE the room
+        # (odom (0,0) == map (2.36, 2.914), past the top-right corner): the
+        # wall clamp wedged it in the corner, the laser saw walls everywhere,
+        # and collision_monitor zeroed all cmd_vel - Nav2 could never move.
         half_w = self.room_width / 2
         half_h = self.room_height / 2
         # Map is centered at (map_to_odom_x, map_to_odom_y) in odom frame
@@ -259,8 +265,8 @@ def main(args=None):
     parser.add_argument('--room-width', type=float, default=4.65)
     parser.add_argument('--room-height', type=float, default=5.75)
     parser.add_argument('--robot-radius', type=float, default=0.22)
-    parser.add_argument('--map-to-odom-x', type=float, default=-2.360)
-    parser.add_argument('--map-to-odom-y', type=float, default=-2.914)
+    parser.add_argument('--map-to-odom-x', type=float, default=0.0)
+    parser.add_argument('--map-to-odom-y', type=float, default=0.0)
     parsed_args, _ = parser.parse_known_args(args)
     
     rclpy.init(args=args)
