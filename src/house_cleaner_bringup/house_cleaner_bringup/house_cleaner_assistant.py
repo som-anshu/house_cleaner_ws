@@ -17,8 +17,8 @@ robot can map — slam_toolbox builds the map live, no prebuilt map needed):
 
 Everything is driven from ROS params so demo timing can be tuned:
 
-  battery.drain_rate     %/s while driving          (default 0.20)
-  battery.charge_rate    %/s while docked           (default 0.80)
+  battery.drain_rate     %/s while driving          (default 0.12)
+  battery.charge_rate    %/s while docked           (default 1.20)
   battery.low_threshold  %  -> return to dock       (default 35.0)
   battery.charge_target  %  -> resume cleaning      (default 95.0)
   mission.strip_width    m  boustrophedon spacing   (default 0.60)
@@ -75,8 +75,8 @@ class HouseCleanerAssistant(Node):
     def __init__(self):
         super().__init__("house_cleaner_assistant")
 
-        self.declare_parameter("battery.drain_rate", 0.20)
-        self.declare_parameter("battery.charge_rate", 0.80)
+        self.declare_parameter("battery.drain_rate", 0.12)
+        self.declare_parameter("battery.charge_rate", 1.20)
         self.declare_parameter("battery.low_threshold", 35.0)
         self.declare_parameter("battery.charge_target", 95.0)
         self.declare_parameter("mission.strip_width", 0.60)
@@ -461,9 +461,7 @@ class HouseCleanerAssistant(Node):
             if self.low_battery_fired:
                 ok = self._recharge_cycle()
                 self.low_battery_fired = False
-                if not ok:
-                    self.get_logger().error("Mission aborted (docking failed).")
-                    return 2
+                # _recharge_cycle no longer aborts mission on failure
 
             x, y, yaw = self.goals[self.goal_idx]
             self.get_logger().info(f"=== CLEANING goal {self.goal_idx + 1}/{total} ===")
@@ -514,30 +512,37 @@ class HouseCleanerAssistant(Node):
         approach = (self.dock[0], self.dock[1] - DOCK_APPROACH_BACK, self.dock[2])
         status, _ = self.send_goal(approach[0], approach[1], approach[2])
         if status != "SUCCEEDED":
-            self.get_logger().warn(f"Return-to-dock goal {status} — retrying once")
-            status, _ = self.send_goal(approach[0], approach[1], approach[2])
-
-        self.state = "DOCKING"
-        seated = self.creep_to_dock()
-        if not seated:
-            # back out and try the approach once more
-            self.get_logger().warn("Docking failed — backing out and re-approaching")
-            self.undock()
-            self.state = "RETURNING"
-            status, _ = self.send_goal(approach[0], approach[1], approach[2])
+            self.get_logger().warn(f"Return-to-dock approach {status} — trying dock pose directly")
+            # fallback: navigate straight to dock body center
+            status, _ = self.send_goal(self.dock[0], self.dock[1], self.dock[2])
+        dock_ok = False
+        if status == "SUCCEEDED":
             self.state = "DOCKING"
             seated = self.creep_to_dock()
-        if not seated:
-            self.get_logger().error("Docking failed twice — aborting mission")
-            self.state = "ERROR"
-            return False
-        self.docked = True
-        self.state = "CHARGING"
-        self.get_logger().info(f"CHARGING — {self.battery_pct:.1f}% -> {self.charge_target:.0f}%")
+            if not seated:
+                self.get_logger().warn("Docking failed — backing out and re-approaching")
+                self.undock()
+                self.state = "RETURNING"
+                status, _ = self.send_goal(approach[0], approach[1], approach[2])
+                self.state = "DOCKING"
+                seated = self.creep_to_dock()
+            if seated:
+                dock_ok = True
+            else:
+                self.get_logger().error("Docking failed after retry — skipping dock this cycle")
+        else:
+            self.get_logger().error(f"Cannot reach dock ({status}) — skipping dock this cycle")
 
-        while self.battery_pct < self.charge_target and rclpy.ok():
-            rclpy.spin_once(self, timeout_sec=0.5)
-        self.get_logger().info(f"CHARGED to {self.battery_pct:.1f}%")
+        if dock_ok:
+            self.docked = True
+            self.state = "CHARGING"
+            self.get_logger().info(f"CHARGING — {self.battery_pct:.1f}% -> {self.charge_target:.0f}%")
+            while self.battery_pct < self.charge_target and rclpy.ok():
+                rclpy.spin_once(self, timeout_sec=0.5)
+            self.get_logger().info(f"CHARGED to {self.battery_pct:.1f}%")
+        else:
+            # couldn't dock — just log and continue; mission loop will keep going
+            self.get_logger().warn("Proceeding without charge this cycle")
 
         if final_park:
             self.state = "DONE"

@@ -43,14 +43,16 @@ src/house_cleaner_bringup/
 
 The cleaning area is derived from the live SLAM map window at runtime. `_coverage_bounds(grid)` reads the map metadata and computes a rectangle with a safety margin. No room dimensions are hardcoded in the assistant.
 
+Goals are generated as a boustrophedon strip pattern and clamped inward by `strip_width/2` so they stay inside the SLAM costmap even while the map is still resizing.
+
 ### Battery & Docking
 
 Battery is simulated entirely in `house_cleaner_assistant.py`. Parameters are exposed as ROS parameters so they can be tuned at launch:
 
 | Parameter | Default | Role |
 |-----------|---------|------|
-| `battery.drain_rate` | `0.20 %/s` | Drain while driving |
-| `battery.charge_rate` | `0.80 %/s` | Charge while docked |
+| `battery.drain_rate` | `0.12 %/s` | Drain while driving |
+| `battery.charge_rate` | `1.20 %/s` | Charge while docked |
 | `battery.low_threshold` | `35.0 %` | Trigger return to dock |
 | `battery.charge_target` | `95.0 %` | Resume cleaning after charge |
 | `mission.strip_width` | `0.60 m` | Boustrophedon lane spacing |
@@ -114,7 +116,7 @@ Environment variables:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-export TURTLEBOT3_MODEL=burger
+export TURTLEBAT3_MODEL=burger
 export ROS_DOMAIN_ID=30
 ```
 
@@ -200,7 +202,7 @@ ros2 action send_goal /navigate_to_pose nav2_msgs/action/NavigateToPose \
 
 ## Cleaning Mission Flow
 
-1. **CLEANING** — assistant generates a 16-goal boustrophedon mission from the live SLAM map bounds and sends each goal sequentially via `/navigate_to_pose`.
+1. **CLEANING** — assistant generates a boustrophedon mission from the live SLAM map bounds and sends each goal sequentially via `/navigate_to_pose`.
 2. **Battery drain** — simulated at `battery.drain_rate` while the robot is moving; `/battery_state` publishes current percentage.
 3. **Low battery** — when battery drops below `battery.low_threshold`, the current goal is canceled and the state switches to **RETURNING**.
 4. **RETURNING** — assistant navigates to the dock approach pose `(0.0, 1.87)`.
@@ -209,6 +211,8 @@ ros2 action send_goal /navigate_to_pose nav2_msgs/action/NavigateToPose \
 7. **UNDOCKING** — robot backs out `~0.48 m` to clear the dock inflation zone.
 8. **RESUME** — mission continues from the next uncovered goal.
 9. **Mission complete** — when all goals are reached, the robot returns to dock and stays.
+
+If a cleaning goal or dock approach cannot be planned, the assistant retries once, then skips that goal rather than aborting the whole mission.
 
 ## World Geometry
 
@@ -238,6 +242,7 @@ ros2 action send_goal /navigate_to_pose nav2_msgs/action/NavigateToPose \
 | `/tf` empty or stale | Multiple overlapping node instances | Kill all, relaunch one |
 | `ros2` command not found | Env not sourced in new terminal | `source /opt/ros/jazzy/setup.bash` |
 | Assistant exits with `Timed out waiting for /map` | SLAM startup is slower than old timeout | Fixed in latest code: timeout raised to 120s with progress logging |
+| Mission skips goals instead of finishing | Map still growing; goals clamped away from bounds | Normal — assistant skips unreachable goals and continues |
 
 ## Status
 
@@ -249,6 +254,7 @@ ros2 action send_goal /navigate_to_pose nav2_msgs/action/NavigateToPose \
 - ✅ SLAM mapping with map save/load
 - ✅ All 9 Nav2 nodes + lifecycle manager verified
 - ✅ Live battery monitor script
+- ✅ Skip-unreachable-goal recovery instead of mission abort
 - ✅ Git repo on GitHub (SSH)
 
 ## License
