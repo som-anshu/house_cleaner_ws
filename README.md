@@ -31,6 +31,8 @@ src/house_cleaner_bringup/
 ├── house_cleaner_bringup/
 │   ├── house_cleaner_assistant.py             ← mission supervisor, battery, docking
 │   └── fake_sim.py                            ← synthetic odom + 360-ray LaserScan publisher
+├── scripts/
+│   └── battery_monitor.py                     ← live battery level visualizer
 └── worlds/
     └── house_room.world                       ← 4.65 x 5.75 m room, obstacles, charging dock
 ```
@@ -54,7 +56,6 @@ Battery is simulated entirely in `house_cleaner_assistant.py`. Parameters are ex
 | `mission.strip_width` | `0.60 m` | Boustrophedon lane spacing |
 
 Dock geometry (map frame):
-
 - Dock body center: `(0.0, 2.75)`, south face at `y = 2.625`
 - Approach pose: `(0.0, 1.87)` yaw `+pi/2`
 - `creep_to_dock` stops when front laser reads `< 0.13 m` (seated)
@@ -76,7 +77,6 @@ The auto launch wires Nav2 manually (no `nav2_bringup`):
 - `lifecycle_manager_navigation` — manage all Nav2 nodes
 
 cmd_vel chain (verified live):
-
 ```
 controller_server -> /cmd_vel_nav -> velocity_smoother -> /cmd_vel_smoothed
   -> collision_monitor -> /cmd_vel -> gz bridge -> robot
@@ -130,23 +130,30 @@ source env.sh   # workspace hook — required for this old colcon
 
 ### 1) Auto-cleaning mission (Gazebo GUI + SLAM + Nav2 + assistant)
 
+**Terminal 1 — simulation:**
 ```bash
 tmux kill-session -t house_auto 2>/dev/null
 tmux new-session -d -s house_auto \
   "source /opt/ros/jazzy/setup.bash && \
    source /home/koko/house_cleaner_ws/env.sh && \
-   ros2 launch house_cleaner_bringup house_cleaning_auto.launch.py headless:=false"
+   ros2 launch house_cleaner_bringup house_cleaning_auto.launch.py \
+     headless:=false \
+     battery_drain_rate:=0.6 \
+     battery_charge_rate:=1.5"
+tmux attach -t house_auto
+# detach without killing: Ctrl+b then d
+```
+
+**Terminal 2 — battery monitor:**
+```bash
+cd /home/koko/house_cleaner_ws
+python3 src/house_cleaner_bringup/scripts/battery_monitor.py
+# stop: Ctrl+c
 ```
 
 - `headless:=true` (default) runs Gazebo headless.
-- Battery drain/charge rates can be overridden at launch for faster demo cycles:
-
-```bash
-ros2 launch house_cleaner_bringup house_cleaning_auto.launch.py \
-  battery_drain_rate:=0.6 battery_charge_rate:=1.5
-```
-
-Logs: `/tmp/house_auto.log` and `~/.ros/log/...`.
+- Battery drain/charge rates override the defaults for faster demo cycles.
+- Logs: `/tmp/house_auto.log` and `~/.ros/log/...`
 
 ### 2) Fake-sim Nav2 only (fast, no Gazebo)
 
@@ -230,6 +237,7 @@ ros2 action send_goal /navigate_to_pose nav2_msgs/action/NavigateToPose \
 | Action clients fail with "context is invalid" | Stale ROS nodes after long run or overlapping instances | Kill all processes and relaunch fresh |
 | `/tf` empty or stale | Multiple overlapping node instances | Kill all, relaunch one |
 | `ros2` command not found | Env not sourced in new terminal | `source /opt/ros/jazzy/setup.bash` |
+| Assistant exits with `Timed out waiting for /map` | SLAM startup is slower than old timeout | Fixed in latest code: timeout raised to 120s with progress logging |
 
 ## Status
 
@@ -240,6 +248,7 @@ ros2 action send_goal /navigate_to_pose nav2_msgs/action/NavigateToPose \
 - ✅ Two simulation paths (fake_sim + Gazebo Harmonic)
 - ✅ SLAM mapping with map save/load
 - ✅ All 9 Nav2 nodes + lifecycle manager verified
+- ✅ Live battery monitor script
 - ✅ Git repo on GitHub (SSH)
 
 ## License
