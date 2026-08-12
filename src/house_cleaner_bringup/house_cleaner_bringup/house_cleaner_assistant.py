@@ -162,11 +162,19 @@ class HouseCleanerAssistant(Node):
             return (X_MIN, X_MAX, Y_MIN, Y_MAX)
         return (x_min, x_max, y_min, y_max)
 
-    def _build_goals(self, strip, bounds):
+    def _build_goals(self, strip, bounds, grid=None):
         """Boustrophedon coverage grid over the given rectangle.
 
         Goals are clamped away from the exact bounds by ``strip/2`` so they
         stay inside the SLAM costmap even while the map is still resizing.
+
+        If an occupancy grid is passed, every goal is validated against it:
+        a goal whose cell is occupied is snapped to the nearest free cell in
+        the same row (boustrophedon pattern preserved), or dropped when no
+        free cell exists nearby.  Without this, a goal landing inside an
+        obstacle (e.g. the sofa when the map window shifts by one cell)
+        makes Nav2 replan forever, drain the battery, and loop in
+        recharge cycles — the module-16 live failure.
         """
         x_min, x_max, y_min, y_max = bounds
         margin = strip / 2.0
@@ -190,11 +198,47 @@ class HouseCleanerAssistant(Node):
                 x0, x1, yaw0, yaw1 = x_min, x_max, 0.0, math.pi
             else:
                 x0, x1, yaw0, yaw1 = x_max, x_min, math.pi, 0.0
-            goals.append((x0, y, yaw0))
-            goals.append((x1, y, yaw1))
+            for x, yaw in ((x0, yaw0), (x1, yaw1)):
+                if grid is not None:
+                    snapped = self._snap_to_free(grid, x, y)
+                    if snapped is None:
+                        continue  # no free cell on this row — skip goal
+                    x, y = snapped
+                goals.append((x, y, yaw))
             y += strip
             row += 1
         return goals
+
+    def _cell(self, grid, x, y):
+        """Occupancy [0-100] at world (x, y), or None when out of window."""
+        info = grid.info
+        col = int((x - info.origin.position.x) / info.resolution)
+        row = int((y - info.origin.position.y) / info.resolution)
+        if col < 0 or row < 0 or col >= info.width or row >= info.height:
+            return None
+        return grid.data[row * info.width + col]
+
+    def _snap_to_free(self, grid, x, y):
+        """Nearest free cell on row y to (x, y); occupied -> nudge, else None.
+
+        Returns the adjusted (x, y) or None when the whole row near the goal
+        is blocked/unknown.  Row-scan keeps the boustrophedon pattern intact
+        instead of creating diagonal detours.
+        """
+        info = grid.info
+        occ = self._cell(grid, x, y)
+        if occ is not None and occ < 50:  # free
+            return (x, y)
+        # scan outward from the goal cell along x, both directions
+        max_cells = int(2.0 / info.resolution)  # 2 m sweep each way
+        for step in range(1, max_cells + 1):
+            for cx in (x + step * info.resolution, x - step * info.resolution):
+                c = self._cell(grid, cx, y)
+                if c is None:
+                    continue  # outside window — treat as blocked
+                if c < 50:
+                    return (cx, y)
+        return None
 
     def _pose_msg(self, x, y, yaw):
         return PoseStamped(
@@ -443,7 +487,7 @@ class HouseCleanerAssistant(Node):
         if grid is None:
             return 1
         bounds = self._coverage_bounds(grid)
-        self.goals = self._build_goals(self.strip, bounds)
+        self.goals = self._build_goals(self.strip, bounds, grid=grid)
         self.get_logger().info(
             f"Coverage planned from live map: {len(self.goals)} goals over "
             f"x∈[{bounds[0]:.2f},{bounds[1]:.2f}] y∈[{bounds[2]:.2f},{bounds[3]:.2f}]"

@@ -74,14 +74,19 @@ def generate_launch_description():
     # client can never connect and always logs "unable to be reached by bond
     # ... Aborting bringup" no matter the bond_timeout. Wait for the node's
     # lifecycle service, then transition.
+    #
+    # Robustness: the node can register late under startup load (Gazebo+Nav2
+    # starting simultaneously), so wait on EACH transition succeeding rather
+    # than a single get-then-set race. 120 x 1s per transition == 2 min cap,
+    # comfortably inside the assistant's 120s wait_for_map window.
     slam_activate = ExecuteProcess(
         cmd=['bash', '-c',
-             'for i in $(seq 1 40); do '
-             'ros2 lifecycle get /slam_toolbox >/dev/null 2>&1 && break; '
+             'for i in $(seq 1 120); do '
+             'ros2 lifecycle set /slam_toolbox configure >/dev/null 2>&1 && break; '
              'sleep 1; done; '
-             'ros2 lifecycle set /slam_toolbox configure; '
-             'sleep 1; '
-             'ros2 lifecycle set /slam_toolbox activate'],
+             'for j in $(seq 1 120); do '
+             'ros2 lifecycle set /slam_toolbox activate >/dev/null 2>&1 && break; '
+             'sleep 1; done'],
         output='screen',
     )
 
