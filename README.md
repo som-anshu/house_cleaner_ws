@@ -256,7 +256,3 @@ If a cleaning goal or dock approach cannot be planned, the assistant retries onc
 - ✅ Live battery monitor script
 - ✅ Skip-unreachable-goal recovery instead of mission abort
 - ✅ Git repo on GitHub (SSH)
-
-## License
-
-Student project — no license specified.
