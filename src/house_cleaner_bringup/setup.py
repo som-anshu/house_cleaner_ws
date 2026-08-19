@@ -44,6 +44,7 @@ setup(
     entry_points={
         'console_scripts': [
             'house_cleaner_assistant = house_cleaner_bringup.house_cleaner_assistant:main',
+            'house_cleaner_assistant_lyrical = house_cleaner_bringup.house_cleaner_assistant_lyrical:main',
             'fake_sim_lyrical = house_cleaner_bringup.fake_sim_lyrical:main',
         ],
     },
