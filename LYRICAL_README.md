@@ -1,4 +1,4 @@
-# House Cleaner Robot
+# House Cleaner Robot (ROS2 Lyrical Branch)
 
 Autonomous room-cleaning robot simulation for **ROS 2 Lyrical** (minimal build).
 
@@ -9,119 +9,54 @@ Autonomous room-cleaning robot simulation for **ROS 2 Lyrical** (minimal build).
 
 ## What It Does
 
-- **Autonomous coverage cleaning**: Plans boustrophedon cleanup goals
-- **Fake simulation**: Synthetic odom + 360-ray laser for Nav2 testing
-- **Battery simulation**: Published on `/battery_state`, triggers return-to-dock
-- **Obstacle avoidance**: Costmap-based collision detection
+- **Synthetic odometry**: `/odom` topic with robot position
+- **360° laser scan**: `/scan` topic for obstacle detection
+- **Velocity control**: Subscribe to `/cmd_vel` for movement
+- **TF transforms**: odom -> base_footprint -> base_link <-> base_scan
 
-## Lyrical-Specific Features
-
-This branch provides a minimal simulation that works without Nav2:
-
-- `/odom` - Odometry topic
-- `/scan` - LaserScan (360 rays, 10m range)
-- `/initialpose` - Initial pose publisher
-- TF tree: `map` -> `odom` -> `base_footprint` -> `base_link` -> `base_scan`
-- Static transforms: base_link -> imu
-
-## Quick Start (Lyrical)
-
-### Prerequisites
-
-ROS2 Lyrical must be installed at `/opt/ros/lyrical/`. The build requires catkin_pkg for Python 3.11.
-
-### Build
+## Quick Start
 
 ```bash
-# Install catkin_pkg for the Python version used by ROS2 Lyrical
-/usr/bin/python3 -m pip install --user catkin_pkg
-
-# Or use uv
-uv pip install catkin_pkg
-
-# Build the workspace
+# Run the simulation
 source /opt/ros/lyrical/setup.bash
-cd /home/koko/house_cleaner_ws
-colcon build --symlink-install --packages-select house_cleaner_bringup
-```
+python3 /home/koko/house_cleaner_ws/src/house_cleaner_bringup/house_cleaner_bringup/fake_sim_lyrical_standalone.py &
 
-### Run
-
-```bash
-# Source environment
-source /opt/ros/lyrical/setup.bash
-source /home/koko/house_cleaner_ws/env.sh
-
-# Launch fake simulation
-ros2 launch house_cleaner_bringup house_cleaning_fake_sim_lyrical.launch.py
-```
-
-### Alternative: Run Python Module Directly
-
-If colcon build fails, you can run the module directly (requires ROS2 to be sourced):
-
-```bash
-source /opt/ros/lyrical/setup.bash
-cd /home/koko/house_cleaner_ws
-PYTORCH_HOME=/dev/null  # Disable torch if present
-python3 src/house_cleaner_bringup/house_cleaner_bringup/fake_sim_lyrical.py &
-ros2 run tf2_tools view_frames.py &
-```
-
-## Verify
-
-```bash
-# Topics
-ros2 topic list | grep -E '/(cmd_vel|odom|scan|tf)'
-
-# Listen to odom
+# Verify topics
+sleep 1
 ros2 topic echo /odom --once
-
-# Listen to scan
 ros2 topic echo /scan --once
+```
+
+## Using the Run Script
+
+```bash
+bash /home/koko/run_house_cleaner.sh
 ```
 
 ## Files in this Branch
 
-- `fake_sim_lyrical.py` - Minimal simulation (no Nav2 dependencies)
-- `house_cleaning_fake_sim_lyrical.launch.py` - Launch file for the minimal sim
-- `env.sh` - Updated for Lyrical paths
-- `LYRICAL_README.md` - This file
+- `fake_sim_lyrical.py` - Core simulation node
+- `fake_sim_lyrical_standalone.py` - Standalone version (recommended for Lyrical)
+- `house_cleaning_fake_sim_lyrical.launch.py` - ROS2 launch file
+- `env.sh` - Environment setup for Lyrical paths
+- `LYRICAL_README.md` - This documentation
 
-## Troubleshooting
+## Verification Output
 
-### "Package 'house_cleaner_bringup' not found"
+When running, the simulation publishes:
+- `/odom` - Odometry with position (x, y), orientation, and covariance
+- `/scan` - LaserScan with 360 ranges (10m max, 0.1m min)
+- TF transforms for robot frame tree
 
-Run `source env.sh` after sourcing ROS2:
-```bash
-source /opt/ros/lyrical/setup.bash
-source /home/koko/house_cleaner_ws/env.sh
-```
+## Next Steps
 
-### "ModuleNotFoundError: No module named 'catkin_pkg'"
+To use with full Nav2 for autonomous navigation:
+1. Install full Nav2 packages compatible with Lyrical
+2. Build workspace with colcon
+3. Use `ros2 launch house_cleaner_bringup house_cleaning_fake_sim.launch.py`
 
-Install catkin_pkg:
-```bash
-/usr/bin/python3 -m pip install --user catkin_pkg
-```
+## GitHub
 
-Or rebuild after installing:
-```bash
-rm -rf build/house_cleaner_bringup install/house_cleaner_bringup
-colcon build --symlink-install --packages-select house_cleaner_bringup
-```
-
-### "python3.11 command not found"
-
-The Lyrical ROS2 uses Python 3.11 from uv. If missing:
-```bash
-uv tool install python3.11 --python-preference=cpython
-```
-
-## TODO
-
-- [ ] Full Nav2 integration (requires nav2 packages)
-- [ ] SLAM integration
-- [ ] Gazebo simulation
-- [ ] Battery management node
-- [ ] Auto-docking behavior
+- Main repo: https://github.com/som-anshu/house_cleaner_ws
+- Lyrical branch: https://github.com/som-anshu/house_cleaner_ws/tree/lyrical
+- PR: https://github.com/som-anshu/house_cleaner_ws/pull/new/lyrical
