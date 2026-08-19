@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.8)
 project(house_cleaner_bringup)
 
 find_package(ament_cmake REQUIRED)
+find_package(rclpy REQUIRED)
 
 # Install launch and config directories
 install(DIRECTORY launch config worlds models
@@ -26,6 +27,13 @@ install(FILES resource/${PROJECT_NAME}
 install(PROGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/house_cleaner_bringup/fake_sim.py
   DESTINATION lib/${PROJECT_NAME}
   RENAME fake_sim
+  PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
+)
+
+# Install fake_sim_lyrical.py for minimal Lyrical builds (no Nav2)
+install(PROGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/house_cleaner_bringup/fake_sim_lyrical.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME fake_sim_lyrical
   PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
 )
 

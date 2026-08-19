@@ -2,53 +2,35 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>house_cleaner_bringup</name>
-  <version>0.0.1</version>
-  <description>House cleaner bringup</description>
+  <version>0.1.0</version>
+  <description>House cleaner bringup for ROS2 Lyrical (minimal build without Nav2/SLAM)</description>
   <maintainer email="koko@example.com">koko</maintainer>
   <license>MIT</license>
+
   <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <!-- message / client libraries -->
+  <!-- Core message/client libraries -->
   <exec_depend>rclpy</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>nav_msgs</exec_depend>
   <exec_depend>std_msgs</exec_depend>
-  <exec_depend>nav2_msgs</exec_depend>
 
-  <!-- environment / robot -->
+  <!-- Environment / robot -->
   <exec_depend>turtlebot3_description</exec_depend>
-  <exec_depend>turtlebot3_gazebo</exec_depend>
   <exec_depend>robot_state_publisher</exec_depend>
   <exec_depend>joint_state_publisher</exec_depend>
 
-  <!-- simulation bridge -->
+  <!-- simulation bridge (ros_gz available in lyrical) -->
   <exec_depend>ros_gz_bridge</exec_depend>
   <exec_depend>ros_gz_sim</exec_depend>
-
-  <!-- SLAM -->
-  <exec_depend>slam_toolbox</exec_depend>
-
-  <!-- Nav2 servers used by the manual stack (house_cleaning_auto) -->
-  <exec_depend>nav2_controller</exec_depend>
-  <exec_depend>nav2_smoother</exec_depend>
-  <exec_depend>nav2_planner</exec_depend>
-  <exec_depend>nav2_behaviors</exec_depend>
-  <exec_depend>nav2_bt_navigator</exec_depend>
-  <exec_depend>nav2_waypoint_follower</exec_depend>
-  <exec_depend>nav2_velocity_smoother</exec_depend>
-  <exec_depend>nav2_collision_monitor</exec_depend>
-  <exec_depend>nav2_lifecycle_manager</exec_depend>
-
-  <!-- Nav2 stock bringup (house_cleaning_gazebo_nav variant: map_server/amcl) -->
-  <exec_depend>nav2_map_server</exec_depend>
-  <exec_depend>nav2_amcl</exec_depend>
-  <exec_depend>nav2_bringup</exec_depend>
-  <exec_depend>nav2_common</exec_depend>
 
   <!-- python launch infrastructure -->
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>ament_index_python</exec_depend>
+
+  <!-- Lyrical-specific: collision detection (no Nav2) -->
+  <exec_depend>nav_msgs</exec_depend>
 </package>
