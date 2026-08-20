@@ -44,6 +44,8 @@ def generate_launch_description():
     charge = LaunchConfiguration('battery_charge_rate', default='0.80')
     low = LaunchConfiguration('battery_low_threshold', default='35.0')
     target = LaunchConfiguration('battery_charge_target', default='95.0')
+    # Mission parameters for cleaning navigation
+    strip = LaunchConfiguration('mission_strip_width', default='0.35')  # Reduced for tighter coverage between obstacles
 
     # 1. Gazebo: house room with obstacles + charging dock
     gazebo_sim = IncludeLaunchDescription(
@@ -163,6 +165,7 @@ def generate_launch_description():
             'battery.charge_rate': charge,
             'battery.low_threshold': low,
             'battery.charge_target': target,
+            'mission.strip_width': strip,
         }],
     )
 
@@ -185,6 +188,10 @@ def generate_launch_description():
     ld.add_action(DeclareLaunchArgument(
         'battery_charge_target', default_value='95.0',
         description='Battery % at which cleaning resumes'))
+    # Mission parameters for closer wall/furniture navigation
+    ld.add_action(DeclareLaunchArgument(
+        'mission_strip_width', default_value='0.35',
+        description='Boustrophedon lane spacing (m) — smaller = tighter coverage near obstacles'))
 
     ld.add_action(gazebo_sim)
     ld.add_action(slam_toolbox)

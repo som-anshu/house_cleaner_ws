@@ -69,7 +69,7 @@ bt_navigator:
     # Built-in plugins are added automatically
     # plugin_lib_names: []
 
-    error_code_names:
+    error_code_name_prefixes:
       - compute_path_error_code
       - follow_path_error_code
 
@@ -125,6 +125,8 @@ controller_server:
       temperature: 0.3
       gamma: 0.015
       motion_model: "DiffDrive"
+      DiffDrive:
+        plugin: "mppi::DiffDriveMotionModel"
       visualize: true
       regenerate_noises: true
       TrajectoryVisualizer:
@@ -207,10 +209,14 @@ local_costmap:
       resolution: 0.05
       robot_radius: 0.22
       plugins: ["voxel_layer", "inflation_layer"]
+      # Reduced inflation radius for closer wall/furniture navigation
+      # Default: 0.70 (robot radius + 23cm safety margin)
+      # Modified: 0.35 (robot radius + 13cm clearance) - enables cleaning between
+      # obstacles while maintaining collision safety
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        inflation_radius: 0.70
+        inflation_radius: 0.35
       voxel_layer:
         plugin: "nav2_costmap_2d::VoxelLayer"
         enabled: True
@@ -272,11 +278,17 @@ global_costmap:
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: True
+      # Reduced inflation radius for closer wall/furniture navigation
+      # Default: 0.7 (robot radius + 23cm safety margin)
+      # Modified: 0.35 (robot radius + 13cm clearance)
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        inflation_radius: 0.7
+        inflation_radius: 0.35
       always_send_full_costmap: True
+
+# Cost value thresholds:
+# 0 = free space, 253 = inscribed boundary (robot cannot enter), 254 = lethal (static obstacle)
 
 # The yaml_filename does not need to be specified since it going to be set by defaults in launch.
 # If you'd rather set it in the yaml, remove the default "map" value in the tb3_simulation_launch.py
@@ -394,6 +406,7 @@ collision_monitor:
     odom_frame_id: "odom"
     cmd_vel_in_topic: "cmd_vel_smoothed"
     cmd_vel_out_topic: "cmd_vel"
+    enable_stamped_cmd_vel: False
     state_topic: "collision_monitor_state"
     transform_tolerance: 0.2
     source_timeout: 1.0

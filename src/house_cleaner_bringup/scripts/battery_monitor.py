@@ -5,11 +5,14 @@ Usage:
   source /opt/ros/jazzy/setup.bash
   source /home/koko/house_cleaner_ws/env.sh
   python3 src/house_cleaner_bringup/scripts/battery_monitor.py
+
+Docker/tmux-safe: Uses explicit line breaks instead of cursor positioning,
+and ASCII characters instead of Unicode block chars for reliable render in
+docker-compose logs and tmux.
 """
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import BatteryState
-import sys
 
 
 class Monitor(Node):
@@ -20,7 +23,6 @@ class Monitor(Node):
 
         self.create_subscription(BatteryState, '/battery_state', self._battery_cb, 10)
         self._timer = self.create_timer(1.0, self._tick)
-        self._last_print = ''
 
     def _battery_cb(self, msg):
         pct = msg.percentage
@@ -33,9 +35,10 @@ class Monitor(Node):
         if self.battery_pct is not None:
             bar_len = 16
             filled = int(bar_len * self.battery_pct / 100.0)
-            bar = '█' * filled + '░' * (bar_len - filled)
+            # Use ASCII '#' and '-' for reliable rendering in docker-compose/tmux
+            bar = '#' * filled + '-' * (bar_len - filled)
         else:
-            bar = '░' * 16
+            bar = '-' * 16
 
         # fixed interior width so the box edges align; width == the
         # separator/header rows (58 interior chars + 2 border chars).
@@ -50,18 +53,19 @@ class Monitor(Node):
                 content += elapsed
         content = content.ljust(58)
 
-        output = (
-            f'\033[2J\033[H'
-            f'╔{"═" * 58}╗\n'
-            f'║' + f'  HOUSE CLEANER — BATTERY MONITOR'.ljust(58) + '║\n'
-            f'╠{"═" * 58}╣\n'
-            f'║{content}║\n'
-            f'╚{"═" * 58}╝\n'
+        # Print each line separately with explicit newlines.
+        # This avoids ANSI cursor codes (clear screen, cursor home) that
+        # get mangled by docker-compose's log prefix injection.
+        # Use ASCII box characters for reliable rendering in all terminals.
+        print(
+            '+' + '=' * 58 + '+',
+            '|' + ' HOUSE CLEANER — BATTERY MONITOR'.ljust(58) + '|',
+            '+' + '-' * 58 + '+',
+            '|' + content + '|',
+            '+' + '=' * 58 + '+',
+            sep='\n',
+            flush=True
         )
-
-        if output != self._last_print:
-            print(output, end='', flush=True)
-            self._last_print = output
 
     def destroy_node(self):
         print('\nMonitor stopped.')

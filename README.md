@@ -116,6 +116,29 @@ so every run starts from a clean state.
 | `ros2 launch house_cleaner_bringup house_cleaning_slam.launch.py` | SLAM-only mapping (save with `map_saver_cli`) |
 | `ros2 launch house_cleaner_bringup house_cleaning_gazebo_nav.launch.py headless:=false` | Gazebo + prebuilt map + AMCL |
 
+### 4. Launch parameters (live launch customization)
+
+Modify behavior at launch time with these arguments:
+
+```bash
+ros2 launch house_cleaner_bringup house_cleaning_auto.launch.py \
+  battery_drain_rate:=0.20 \
+  battery_charge_rate:=0.80 \
+  battery_low_threshold:=35.0 \
+  battery_charge_target:=95.0 \
+  mission_strip_width:=0.35 \
+  headless:=true
+```
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `battery_drain_rate` | `0.20 %/s` | Battery drain while driving |
+| `battery_charge_rate` | `0.80 %/s` | Battery charge while docked |
+| `battery_low_threshold` | `35.0 %` | Return to dock at this battery % |
+| `battery_charge_target` | `95.0 %` | Resume cleaning after charging to this % |
+| `mission_strip_width` | `0.35 m` | Boustrophedon lane spacing (tighter = more coverage, closer to obstacles) |
+| `headless` | `true` | `true` = no Gazebo GUI, `false` = show GUI |
+
 ---
 
 ## ✨ Features
@@ -139,7 +162,20 @@ Battery is simulated in `house_cleaner_assistant.py`, tunable via ROS params:
 | `battery.charge_rate` | `1.20 %/s` | Charge while docked |
 | `battery.low_threshold` | `35.0 %` | Return to dock when below |
 | `battery.charge_target` | `95.0 %` | Resume cleaning after charge |
-| `mission.strip_width` | `0.60 m` | Coverage lane spacing |
+| `mission.strip_width` | `0.60 m` | Boustrophedon lane spacing (coverage density) |
+| `inflation_radius` (Nav2) | `0.70 m` | Costmap inflation for obstacle avoidance |
+
+### Cleaning Around Walls & Furniture
+
+For tighter coverage **between** walls and furniture (enabling cleaning closer to obstacles):
+
+- Reduce `mission.strip_width` (default `0.60 m` → try `0.35 m` for denser paths)
+- Reduce `inflation_radius` in `nav2_params.yaml` (default `0.70 m` → try `0.35 m`)
+- Launch argument: `ros2 launch ... mission_strip_width:=0.35`
+
+This allows the robot to clean closer to walls and furniture while Nav2's obstacle layer still prevents collisions.
+
+---
 
 ## 🔁 Cleaning Mission Flow
 
@@ -184,10 +220,14 @@ ros2 lifecycle get /controller_server     # expect "active"
 
 ```
 src/house_cleaner_bringup/
-├── launch/    house_cleaning_auto.launch.py  ← primary (Gazebo + SLAM + Nav2 + assistant)
-│              house_cleaning_fake_sim.launch.py, house_cleaning_slam.launch.py, ...
+├── launch/    
+│   ├── house_cleaning_auto.launch.py      ← primary (Gazebo + SLAM + Nav2 + assistant)
+│   ├── house_cleaning_fake_sim.launch.py
+│   ├── house_cleaning_slam.launch.py
+│   └── gazebo_house_cleaning.launch.py
 ├── config/    nav2_params.yaml, slam_toolbox params, prebuilt map
-├── house_cleaner_bringup/  house_cleaner_assistant.py, fake_sim.py
+├── house_cleaner_bringup/  
+│   └── house_cleaner_assistant.py, fake_sim.py
 ├── scripts/   battery_monitor.py
 └── worlds/    house_room.world
 ```
