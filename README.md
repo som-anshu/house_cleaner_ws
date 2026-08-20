@@ -56,6 +56,35 @@ terminal shows a live battery bar.
 - Linux only. On macOS/Windows, run with `DISPLAY`/X11 forwarding configured
   for GUI apps.
 
+### Docker launch parameters (customize at runtime)
+
+Pass launch arguments after `--` to customize the robot's behavior:
+
+```bash
+# Default: GUI enabled with tighter obstacle navigation
+./run_docker.sh
+
+# Custom parameters: faster battery drain, tighter coverage
+./run_docker.sh --battery_drain_rate 0.3 --mission_strip_width 0.4
+
+# Headless mode (no GUI) with default params
+./run_docker.sh --headless true
+
+# Full example with all parameters
+./run_docker.sh --battery_drain_rate 0.25 --battery_charge_rate 1.0 \
+  --battery_low_threshold 40.0 --mission_strip_width 0.35
+```
+
+Available Docker launch parameters:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `battery_drain_rate` | `0.20 %/s` | Battery drain while driving |
+| `battery_charge_rate` | `0.80 %/s` | Battery charge while docked |
+| `battery_low_threshold` | `35.0 %` | Return to dock at this battery % |
+| `mission_strip_width` | `0.35 m` | Boustrophedon lane spacing |
+| `headless` | `false` | Set `true` to disable Gazebo GUI |
+
 ---
 
 ## 🛠️ Native Install
