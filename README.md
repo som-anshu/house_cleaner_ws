@@ -14,7 +14,7 @@ Pick one path:
 | Path | Best for | Effort |
 |------|----------|--------|
 | **[🐳 Docker](#docker-recommended)** | Seeing it run immediately | 1 command |
-| **[🛠️ Native install](#native-install)** | Developing / hacking the code | ~10 min setup |
+| **[🛠️ Native install](#native-install)** | Developing the code | ~10 min setup |
 
 ---
 
