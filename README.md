@@ -120,6 +120,34 @@ export TURTLEBOT3_MODEL=burger
 export ROS_DOMAIN_ID=30
 ```
 
+## Docker (recommended)
+
+The entire Jazzy stack (Gazebo Harmonic + slam_toolbox + Nav2 + assistant) runs
+inside a single container. The entrypoint always launches **both** the Gazebo
+GUI and the battery monitor together, so you see the robot cleaning while its
+charge drains.
+
+```bash
+# Build + run (GUI opens on your display)
+docker compose up --build
+
+# Or build/run separately:
+docker build -t house_cleaner:jazzy .
+docker run -it --rm \
+  -e DISPLAY=$DISPLAY -e TURTLEBOT3_MODEL=burger -e ROS_DOMAIN_ID=30 \
+  -v /tmp/.X11-unix:/tmp/.X11-unix:rw -v /dev/shm:/dev/shm \
+  --device /dev/dri \
+  house_cleaner:jazzy
+```
+
+- The container is **not headless** — `headless:=false` is baked into
+  `entrypoint.sh` so the Gazebo GUI shows the TurtleBot3 Burger.
+- Battery monitor prints a live `█▓░` bar to the container log.
+- First-time `docker compose up --build` takes several minutes (installs the
+  Nav2/Gazebo stack); later runs are instant.
+- NVIDIA GPU passthrough (nvidia-container-toolkit) is not configured; the GUI
+  renders via software — fine for viewing, just slow.
+
 ## Build
 
 ```bash

@@ -9,6 +9,11 @@ services:
     environment:
       - TURTLEBOT3_MODEL=burger
       - ROS_DOMAIN_ID=30
-    command: ros2 launch house_cleaner_bringup house_cleaning_auto.launch.py
-    # ponytail: single service; add a second "dev" service (bash entry) if an
-    # interactive shell inside the same container is needed later
+      - DISPLAY=${DISPLAY:-:0}
+    # X11 + GPU for the Gazebo GUI (launched by entrypoint, not headless)
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - /dev/shm:/dev/shm
+    devices:
+      - /dev/dri
+    command: ["/entrypoint.sh"]

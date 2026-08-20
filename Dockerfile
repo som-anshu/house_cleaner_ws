@@ -60,5 +60,7 @@ ENV ROS_DOMAIN_ID=30
 # the package. Set it explicitly.
 ENV AMENT_PREFIX_PATH=/workspace/install/house_cleaner_bringup:/workspace/install:/opt/ros/jazzy
 
-ENTRYPOINT ["/bin/bash", "-c"]
-CMD ["source /opt/ros/jazzy/setup.bash && source /workspace/install/setup.bash && ros2 launch house_cleaner_bringup house_cleaning_auto.launch.py"]
+COPY entrypoint.sh /
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
