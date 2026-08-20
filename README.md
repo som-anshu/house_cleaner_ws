@@ -23,22 +23,26 @@ Pick one path:
 Everything (Gazebo + SLAM + Nav2 + assistant) runs in one container.
 The Gazebo **GUI** and **battery monitor** launch together automatically.
 
-### 1. Install Docker
+### 1. First-time setup
 
 ```bash
-# Linux (Ubuntu/Debian) — otherwise follow: https://docs.docker.com/install
+# a) Install Docker (Linux/Ubuntu) — otherwise: https://docs.docker.com/install
 curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER   # then log out & back in
-```
+sudo usermod -aG docker $USER     # then log out & back in
 
-### 2. Run
-
-```bash
+# b) Clone the repo
 git clone git@github.com:som-anshu/house_cleaner_ws.git
 cd house_cleaner_ws
-
-docker compose up --build
 ```
+
+### 2. How to run (every time)
+
+```bash
+./run_docker.sh --build   # first run: builds the image, then launches
+./run_docker.sh           # later runs: just launches (reuse cached image)
+```
+
+`run_docker.sh` **always kills any previous house-cleaner instance** (host ROS2/Gazebo/RViz processes + the old container) before starting a fresh sim, so you never get a stale robot.
 
 That's it. A Gazebo window opens showing the robot cleaning the room, and the
 terminal shows a live battery bar.
@@ -56,7 +60,9 @@ terminal shows a live battery bar.
 
 ## 🛠️ Native Install
 
-### 1. Prerequisites
+### 1. First-time setup
+
+Prerequisites:
 
 ```bash
 # Ubuntu 24.04 (Noble) with ROS 2 Jazzy already installed
@@ -65,15 +71,7 @@ sudo apt install ros-jazzy-turtlebot3 ros-jazzy-turtlebot3-gazebo
 sudo apt install ros-jazzy-slam-toolbox ros-jazzy-navigation2 ros-jazzy-nav2-bringup
 ```
 
-Environment:
-
-```bash
-source /opt/ros/jazzy/setup.bash
-export TURTLEBOT3_MODEL=burger
-export ROS_DOMAIN_ID=30
-```
-
-### 2. Build
+Clone + build:
 
 ```bash
 git clone git@github.com:som-anshu/house_cleaner_ws.git
@@ -84,20 +82,33 @@ colcon build --symlink-install \
 source env.sh      # workspace hook (required on this host's old colcon)
 ```
 
-### 3. Run the full mission (Gazebo GUI + SLAM + Nav2 + assistant)
+Environment (every new terminal):
 
-**Terminal 1 — simulation:**
 ```bash
-ros2 launch house_cleaner_bringup house_cleaning_auto.launch.py headless:=false
+source /opt/ros/jazzy/setup.bash
+source ~/house_cleaner_ws/env.sh
+export TURTLEBOT3_MODEL=burger
+export ROS_DOMAIN_ID=30
 ```
 
-**Terminal 2 — battery monitor:**
+### 2. How to run (every time)
+
+Kill any previous instance, then launch the full mission:
+
 ```bash
-cd house_cleaner_ws
+# Terminal 1 — kill stale instances, then start the sim (GUI + SLAM + Nav2 + assistant)
+bash scripts/kill_house_cleaner.sh
+ros2 launch house_cleaner_bringup house_cleaning_auto.launch.py headless:=false
+
+# Terminal 2 — battery monitor
+cd ~/house_cleaner_ws
 python3 src/house_cleaner_bringup/scripts/battery_monitor.py
 ```
 
-### 4. Alternative launch modes
+`kill_house_cleaner.sh` always clears leftover ROS2/Gazebo/RViz processes first,
+so every run starts from a clean state.
+
+### 3. Alternative launch modes
 
 | Command | What it runs |
 |---------|--------------|
