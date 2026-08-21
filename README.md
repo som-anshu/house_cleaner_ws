@@ -160,7 +160,7 @@ Every new terminal:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-source ~/house_cleaner_ws/env.sh
+source env.sh                    # use absolute path if running from another directory
 export TURTLEBOT3_MODEL=burger
 export ROS_DOMAIN_ID=30
 ```
