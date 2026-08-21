@@ -21,7 +21,8 @@ avoids obstacles, tracks its battery, and docks itself to recharge when low.
 10. [Verification](#verification)
 11. [Repository Layout](#repository-layout)
 12. [Troubleshooting](#troubleshooting)
-13. [Status](#status)
+13. [Automated Testing](#automated-testing)
+14. [Status](#status)
 
 ---
 
@@ -304,10 +305,14 @@ src/house_cleaner_bringup/
         house_room_map.yaml                     # Prebuilt map (for AMCL mode)
     house_cleaner_bringup/
         house_cleaner_assistant.py              # Coverage planning + battery + docking
-        fake_sim.py                             # Lightweight simulator
+        house_cleaner_assistant_lyrical.py      # Lyrical branch assistant
+        fake_sim.py                             # Lightweight simulator (Jazzy)
+        fake_sim_lyrical.py                     # Lightweight simulator (Lyrical)
+        fake_sim_lyrical_standalone.py          # Standalone fake sim launcher
     scripts/
         battery_monitor.py                      # Terminal battery bar display
         verify_scan_forward_index.py
+        kill_house_cleaner.sh                   # Kill all ROS2/Gazebo processes
     worlds/
         house_room.world                        # Gazebo world with obstacles
 ```
@@ -326,6 +331,47 @@ src/house_cleaner_bringup/
 | Assistant times out on `/map` | SLAM slow to initialize | 120s timeout with progress logging; wait for first map |
 | Mission skips goals | Map still growing | Normal behavior; unreachable goals are skipped |
 | `/tf` empty or stale frames | Overlapping node instances | Kill all processes, relaunch from clean state |
+
+---
+
+## Automated Testing
+
+The repository includes a portability test suite to validate that all hardcoded paths
+have been removed and that scripts function correctly regardless of installation location.
+
+### Running Tests
+
+```bash
+cd house_cleaner_ws
+chmod +x test_portability.sh
+./test_portability.sh
+```
+
+### Test Coverage
+
+| Test | Validates |
+|------|-----------|
+| 1 | No hardcoded `/home/koko` paths in tracked files |
+| 2 | `env.sh` uses `BASH_SOURCE` for dynamic path detection |
+| 3 | `run_house_cleaner.sh` uses dynamic path detection |
+| 4 | `run_docker_gui.sh` uses `$DIR` for volume mount (not `$HOME`) |
+| 5 | Dockerfile uses ROS2 Jazzy base image |
+| 6 | `fake_sim_lyrical_standalone.py` uses `__file__` for dynamic paths |
+| 7 | All shell scripts are executable |
+| 8 | `entrypoint.sh` handles headless parameter |
+| 9 | `docker-compose.yml` configured with correct image |
+| 10 | README.md contains all required documentation sections |
+
+### Expected Output
+
+```
+=== Test Summary ===
+Total: 12
+Passed: 12
+Failed: 0
+
+=== ALL TESTS PASSED ===
+```
 
 ---
 
