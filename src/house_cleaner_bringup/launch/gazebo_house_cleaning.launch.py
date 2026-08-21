@@ -30,7 +30,7 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import AppendEnvironmentVariable, DeclareLaunchArgument
+from launch.actions import AppendEnvironmentVariable, DeclareLaunchArgument, SetEnvironmentVariable
 from launch.actions import IncludeLaunchDescription
 from launch.conditions import UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
@@ -118,10 +118,13 @@ def generate_launch_description():
         os.path.join(tbg, 'models')
     )
     
-    # Disable rendering for headless/container environments
-    set_env_rendering = AppendEnvironmentVariable(
-        'GZ_RENDERING_DISABLED',
-        '1'
+    # Disable rendering for headless/container environments without GPU
+    # Use SetEnvironmentVariable (not Append) to ensure proper overwrite
+    set_env_rendering = SetEnvironmentVariable(
+        'GZ_RENDERING_DISABLED', '1'
+    )
+    set_env_gl = SetEnvironmentVariable(
+        'LIBGL_ALWAYS_SOFTWARE', '1'
     )
 
     ld = LaunchDescription()
@@ -142,6 +145,7 @@ def generate_launch_description():
     ld.add_action(set_env_resources)
     ld.add_action(set_env_model)
     ld.add_action(set_env_rendering)
+    ld.add_action(set_env_gl)
     ld.add_action(gzserver_cmd)
     ld.add_action(robot_state_publisher_cmd)
     ld.add_action(spawn_turtlebot_cmd)

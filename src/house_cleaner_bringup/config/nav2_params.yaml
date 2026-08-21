@@ -123,7 +123,7 @@ controller_server:
 collision_monitor:
   ros__parameters:
     use_sim_time: true
-    observation_sources: 'lidar scan'
+    observation_sources: ['lidar']
     robot_min_radius: 0.15
     robot_max_radius: 0.18
     velocity_columns: 1

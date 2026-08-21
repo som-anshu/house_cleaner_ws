@@ -148,7 +148,7 @@ def generate_launch_description():
             'node_names': [
                 'controller_server', 'smoother_server', 'planner_server',
                 'behavior_server', 'bt_navigator', 'waypoint_follower',
-                'velocity_smoother',
+                'velocity_smoother', 'collision_monitor',
             ],
         }],
     )
