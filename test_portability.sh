@@ -12,9 +12,9 @@
 # 7. No external file dependencies (run_house_cleaner.sh symlink target)
 # 8. README references are correct
 # 9. Config files are valid YAML
-# 10. Collision monitor params present
+# 10. Collision monitor params present and correct type
 # 11. MPPI params under FollowPath (not controller_server level)
-# 12. Lifecycle manager node_names excludes collision_monitor
+# 12. Lifecycle manager includes collision_monitor in node_names
 
 set -e
 PASS=0
@@ -125,7 +125,7 @@ print('MPPI params in FollowPath')
 "
 check "MPPI params (rollout_batch_size, collision_checker) under FollowPath"
 
-# Test 12: Lifecycle manager excludes collision_monitor
+# Test 12: Lifecycle manager includes collision_monitor
 echo ""
 echo "Test 12: Checking lifecycle manager config"
 python3 -c "
@@ -133,10 +133,10 @@ import yaml
 with open('src/house_cleaner_bringup/config/nav2_params.yaml') as f:
     cfg = yaml.safe_load(f)
 nodes = cfg['lifecycle_manager_navigation']['ros__parameters']['node_names']
-assert 'collision_monitor' not in nodes, 'collision_monitor still in lifecycle node_names'
-print('collision_monitor excluded from lifecycle manager')
+assert 'collision_monitor' in nodes, 'collision_monitor missing from lifecycle node_names'
+print('collision_monitor in lifecycle manager')
 "
-check "collision_monitor excluded from lifecycle manager"
+check "collision_monitor included in lifecycle manager node_names"
 
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="

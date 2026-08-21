@@ -125,9 +125,11 @@ Parameters are passed directly to the ROS2 launch system via the entrypoint:
 
 ### Docker Configuration Notes
 
-- The `docker-compose.yml` configures the container with X11 and GPU device mappings.
-- Headless mode uses `GZ_RENDERING_DISABLED=1` to avoid requiring GPU drivers.
+- The `docker-compose.yml` configures software rendering by default (`LIBGL_ALWAYS_SOFTWARE=1`, `GZ_RENDERING_DISABLED=1`) for headless reliability.
+- Headless mode disables rendering entirely — no GPU required.
 - GUI mode requires X11 access (`xhost +local:docker`) and a valid `DISPLAY` environment variable.
+- If the `gz` command fails inside the container, the entrypoint wraps it; bypass with `docker exec house_cleaner_jazzy --entrypoint '' bash` for raw debugging.
+- The `gz` binary is a Ruby script at `/opt/ros/jazzy/opt/gz_tools_vendor/bin/gz` — not a compiled binary.
 
 ---
 
@@ -324,13 +326,15 @@ src/house_cleaner_bringup/
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | `qt.qpa.xcb: could not connect to display` | No X11 forward or DISPLAY not set | Use headless mode (`./run_docker.sh`) or set up X11 access |
-| `OpenGL 3.3 is not supported` | No GPU access in container | Set `GZ_RENDERING_DISABLED=1` (default in headless mode) |
+| `OpenGL 3.3 is not supported` / `Segfault (core dumped)` | Gazebo rendering fails in headless container | Set `GZ_RENDERING_DISABLED=1` and `LIBGL_ALWAYS_SOFTWARE=1` (default in headless mode) |
 | `controller_server` crashes (SIGABRT) | MPPI visualization in headless mode | `visualize: false` in nav2_params.yaml |
 | `planner_server` crashes | Costmap dimensions incorrect | Ensure resolution and dimensions produce integer cell counts |
 | `ros2` command not found | Environment not sourced | Run `source /opt/ros/jazzy/setup.bash` |
 | Assistant times out on `/map` | SLAM slow to initialize | 120s timeout with progress logging; wait for first map |
 | Mission skips goals | Map still growing | Normal behavior; unreachable goals are skipped |
 | `/tf` empty or stale frames | Overlapping node instances | Kill all processes, relaunch from clean state |
+| `collision_monitor` fails to configure | `observation_sources` wrong type | Must be a string array `['lidar']`, not a string `'lidar scan'` |
+| `collision_monitor` fails to activate | Not in lifecycle manager `node_names` | Add `collision_monitor` to lifecycle manager node list |
 
 ---
 
@@ -362,7 +366,7 @@ chmod +x test_portability.sh
 | 9 | Config files (YAML) are valid |
 | 10 | `collision_monitor` parameters present with `observation_sources` |
 | 11 | MPPI parameters (`rollout_batch_size`, `collision_checker`) under `FollowPath` |
-| 12 | `collision_monitor` excluded from lifecycle manager `node_names` |
+| 12 | `collision_monitor` included in lifecycle manager `node_names` |
 | - | Plus 14 additional sub-checks within each test |
 
 ### Expected Output
