@@ -14,11 +14,9 @@ Features:
 import math
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import Twist, PoseStamped, Point, Quaternion
-from std_msgs.msg import Header
+from geometry_msgs.msg import Twist, PoseStamped
 from sensor_msgs.msg import BatteryState, LaserScan
 from nav_msgs.msg import Odometry, OccupancyGrid
-from visualization_msgs.msg import Marker
 
 # Room bounds (from house_room.world)
 X_MIN, X_MAX = -2.325, 2.325
@@ -102,11 +100,6 @@ class HouseCleanerAssistantLyrical(Node):
         vx = msg.twist.twist.linear.x
         vy = msg.twist.twist.linear.y
         self.current_pose = (x, y, yaw)
-
-        # Publish velocity for safety
-        if vx == 0 and vy == 0:
-            cmd = Twist()
-            self.cmd_vel_pub.publish(cmd)
 
     def scan_callback(self, msg):
         self.last_scan = msg
@@ -266,27 +259,6 @@ class HouseCleanerAssistantLyrical(Node):
         # Check if all goals done
         if self.state == "CLEANING" and self.goal_idx >= len(self.goals):
             self.state = "RETURNING"
-
-        # Visual marker for current goal
-        if self.goal_idx < len(self.goals):
-            marker = Marker()
-            marker.header.stamp = self.get_clock().now().to_msg()
-            marker.header.frame_id = "map"
-            marker.ns = "goals"
-            marker.id = self.goal_idx
-            marker.type = Marker.SPHERE
-            marker.action = Marker.ADD
-            gx, gy, _ = self.goals[self.goal_idx]
-            marker.pose.position.x = gx
-            marker.pose.position.y = gy
-            marker.pose.position.z = 0.0
-            marker.pose.orientation.w = 1.0
-            marker.scale.x = marker.scale.y = marker.scale.z = 0.15
-            marker.color.r = 0.0
-            marker.color.g = 1.0
-            marker.color.b = 0.0
-            marker.color.a = 1.0
-            # Would publish to /goals_visualization topic if marker_pub existed
 
 
 def main(args=None):

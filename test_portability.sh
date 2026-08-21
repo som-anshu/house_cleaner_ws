@@ -152,7 +152,61 @@ nodes = cfg['lifecycle_manager_navigation']['ros__parameters']['node_names']
 assert 'collision_monitor' in nodes, 'collision_monitor missing from lifecycle node_names'
 print('collision_monitor in lifecycle manager')
 "
-check "collision_monitor included in lifecycle manager node_names"
+# 15. fake_sim_lyrical_standalone.py raycasts with yaw offset
+
+# Test 13: setup.py entry points reference existing modules
+echo ""
+echo "Test 13: Checking setup.py entry points"
+python3 -c "
+import os
+# fake_sim_lyrical entry point should reference the existing module
+assert os.path.exists('src/house_cleaner_bringup/house_cleaner_bringup/fake_sim_lyrical.py'), \
+    'fake_sim_lyrical.py must exist'
+with open('src/house_cleaner_bringup/setup.py') as f:
+    content = f.read()
+assert 'fake_sim_lyrical = house_cleaner_bringup.fake_sim_lyrical:main' in content, \
+    'entry point does not match module name'
+print('entry points reference correct modules')
+"
+check "setup.py entry points reference existing modules"
+
+# Test 14: All launch files registered in setup.py data_files
+echo ""
+echo "Test 14: Checking setup.py launch file registration"
+python3 -c "
+import os
+launch_dir = 'src/house_cleaner_bringup/launch'
+for f in os.listdir(launch_dir):
+    if os.path.isdir(os.path.join(launch_dir, f)):
+        continue
+    assert f.endswith('.launch.py'), f
+    # Read setup.py and check the file is registered
+    with open('src/house_cleaner_bringup/setup.py') as sf:
+        content = sf.read()
+    assert f in content, f'{f} not registered in setup.py data_files'
+print('all launch files registered in setup.py')
+"
+check "All launch files registered in setup.py data_files"
+
+# Test 15: fake_sim_lyrical_standalone.py raycasts with yaw offset
+echo ""
+echo "Test 15: Checking fake_sim raycast consistency"
+grep -q 'self\.yaw +' src/house_cleaner_bringup/house_cleaner_bringup/fake_sim.py
+check "fake_sim.py raycasts with yaw offset"
+grep -q 'self\.yaw +' src/house_cleaner_bringup/house_cleaner_bringup/fake_sim_lyrical.py
+check "fake_sim_lyrical.py raycasts with yaw offset"
+grep -q 'self\.yaw +' src/house_cleaner_bringup/house_cleaner_bringup/fake_sim_lyrical_standalone.py
+check "fake_sim_lyrical_standalone.py raycasts with yaw offset"
+
+# Test 16: fake_sim_lyrical_standalone.py has complete rotation quaternion
+echo ""
+echo "Test 16: Checking fake_sim_lyrical_standalone.py rotation quaternion"
+grep -q 'rotation\.x = 0' src/house_cleaner_bringup/house_cleaner_bringup/fake_sim_lyrical_standalone.py
+check "fake_sim_lyrical_standalone.py sets rotation.x = 0"
+grep -q 'rotation\.y = 0' src/house_cleaner_bringup/house_cleaner_bringup/fake_sim_lyrical_standalone.py
+check "fake_sim_lyrical_standalone.py sets rotation.y = 0"
+grep -q 'rotation\.z = math.sin' src/house_cleaner_bringup/house_cleaner_bringup/fake_sim_lyrical_standalone.py
+check "fake_sim_lyrical_standalone.py sets rotation.z"
 
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="

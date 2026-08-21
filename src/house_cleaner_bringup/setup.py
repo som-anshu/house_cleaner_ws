@@ -23,7 +23,9 @@ setup(
             'launch/house_cleaning_slam.launch.py',
             'launch/house_cleaning_gazebo_slam.launch.py',
             'launch/house_cleaning_gazebo_nav.launch.py',
+            'launch/house_cleaning_gazebo_nav_manual.launch.py',
             'launch/house_cleaning_auto.launch.py',
+            'launch/house_cleaning_auto_lyrical.launch.py',
         ]),
         ('share/house_cleaner_bringup/worlds', [
             'worlds/house_room.world',

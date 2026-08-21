@@ -115,6 +115,9 @@ class FakeSimLyrical(Node):
         t.child_frame_id = 'base_footprint'
         t.transform.translation.x = self.x
         t.transform.translation.y = self.y
+        t.transform.translation.z = 0.0
+        t.transform.rotation.x = 0.0
+        t.transform.rotation.y = 0.0
         t.transform.rotation.w = math.cos(self.yaw/2)
         t.transform.rotation.z = math.sin(self.yaw/2)
         self.odom_tf_broadcaster.sendTransform(t)
@@ -137,7 +140,7 @@ class FakeSimLyrical(Node):
         scan.angle_increment = math.pi / 180.0
         scan.range_min = 0.1
         scan.range_max = 10.0
-        scan.ranges = [self.cast_ray(self.x, self.y, i * math.pi / 180.0) 
+        scan.ranges = [self.cast_ray(self.x, self.y, self.yaw + i * math.pi / 180.0) \
                        for i in range(360)]
         scan.intensities = [100.0] * 360
         self.scan_pub.publish(scan)

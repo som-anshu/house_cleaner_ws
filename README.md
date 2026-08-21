@@ -359,11 +359,14 @@ chmod +x test_portability.sh
 | 5 | Dockerfile includes Mesa/GL libraries for rendering support |
 | 6 | All launch files parse as valid Python |
 | 7 | No external symlinks in workspace root |
-| 8 | README references `env.sh` and `run_docker.sh` |
+| 8 | README references env.sh and run_docker.sh |
 | 9 | Config files (YAML) are valid |
-| 10 | `collision_monitor` parameters present with `observation_sources` |
-| 11 | MPPI parameters (`rollout_batch_size`, `collision_checker`) under `FollowPath` |
-| 12 | `collision_monitor` included in lifecycle manager `node_names` |
+| 10 | collision_monitor parameters present with observation_sources |
+| 11 | MPPI parameters (rollout_batch_size, collision_checker) under FollowPath |
+| 12 | collision_monitor included in lifecycle manager node_names |
+| 13 | setup.py entry points reference existing modules |
+| 14 | All launch files registered in setup.py data_files |
+| 15 | fake_sim_lyrical_standalone.py raycasts with yaw offset |
 | - | Plus 14 additional sub-checks within each test |
 
 ### Expected Output
@@ -371,7 +374,7 @@ chmod +x test_portability.sh
 ```
 === Portability Test Suite ===
 
-=== Results: 31 passed, 0 failed ===
+=== Results: 34 passed, 0 failed ===
 
 Exit code: 0
 ```

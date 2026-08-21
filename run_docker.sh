@@ -51,11 +51,14 @@ if ! $DOCKER image inspect house_cleaner:jazzy >/dev/null 2>&1; then
 fi
 
 # Run with GUI mode - use -d for detached mode (no TTY required)
+# LIBGL_ALWAYS_SOFTWARE=1 provides a software rendering fallback if the
+# host GPU drivers are inaccessible inside the container.
 $DOCKER run -d --rm \
     --name house_cleaner_jazzy \
     -e TURTLEBOT3_MODEL=burger \
     -e ROS_DOMAIN_ID=30 \
     -e DISPLAY=$DISPLAY \
+    -e LIBGL_ALWAYS_SOFTWARE=1 \
     -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
     -v /dev/shm:/dev/shm \
     -v "$DIR:/workspace" \
