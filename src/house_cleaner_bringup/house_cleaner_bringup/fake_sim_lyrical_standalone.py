@@ -4,7 +4,7 @@ import os
 import sys
 
 # Set environment before importing rclpy
-os.environ['ROS_DOMAIN_ID'] = '30'
+os.environ.setdefault('ROS_DOMAIN_ID', '30')
 
 # Add src to path dynamically
 _script_dir = os.path.dirname(os.path.abspath(__file__))
