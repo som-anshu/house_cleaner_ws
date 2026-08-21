@@ -11,10 +11,14 @@ services:
       - ROS_DOMAIN_ID=30
       - DISPLAY=${DISPLAY}
       - LIBGL_ALWAYS_SOFTWARE=1
+      - MESA_GL_VERSION_OVERRIDE=3.3
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - /dev/shm:/dev/shm
       - .:/workspace
-    devices:
-      - /dev/dri
+    # GPU device passthrough (--device /dev/dri) is intentionally omitted.
+    # On hosts with NVIDIA GPUs, passing /dev/dri causes an EGL conflict inside
+    # the container (NVIDIA PCI detected but no driver) → Gazebo segfault.
+    # LIBGL_ALWAYS_SOFTWARE=1 + Mesa llvmpipe is the reliable fallback.
+    # For NVIDIA Container Toolkit: add `--gpus all` and drop LIBGL_ALWAYS_SOFTWARE.
     # command is empty — entrypoint.sh handles launch directly.

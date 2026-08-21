@@ -9,6 +9,7 @@
 # Prerequisites:
 #   - X11 running on host display
 #   - xhost permission: xhost +local:docker
+#   - GPU with OpenGL OR software rendering fallback (LIBGL_ALWAYS_SOFTWARE=1)
 set -e
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -50,19 +51,30 @@ if ! $DOCKER image inspect house_cleaner:jazzy >/dev/null 2>&1; then
     $DOCKER build -t house_cleaner:jazzy .
 fi
 
-# Run with GUI mode - use -d for detached mode (no TTY required)
-# LIBGL_ALWAYS_SOFTWARE=1 provides a software rendering fallback if the
-# host GPU drivers are inaccessible inside the container.
+# Run with GUI mode.
+#
+# Rendering strategy:
+#   - LIBGL_ALWAYS_SOFTWARE=1 forces Mesa software rendering (llvmpipe),
+#     which works in any environment with X11 but no host GPU drivers.
+#   - MESA_GL_VERSION_OVERRIDE=3.3 ensures compatibility with Gazebo's
+#     OpenGL 3.3 requirement when running on llvmpipe.
+#   - --device /dev/dri is omitted because on hosts with NVIDIA GPUs,
+#     passing the device causes an EGL conflict: the container detects
+#     the NVIDIA PCI ID but has no nvidia driver, leading to a segfault
+#     in gz-sim's render thread. Software rendering alone via Mesa is
+#     more reliable for containerized Gazebo.
+#   - If you have a working GPU passthrough (e.g. NVIDIA Container Toolkit),
+#     you can add --gpus all and remove LIBGL_ALWAYS_SOFTWARE=1.
 $DOCKER run -d --rm \
     --name house_cleaner_jazzy \
     -e TURTLEBOT3_MODEL=burger \
     -e ROS_DOMAIN_ID=30 \
     -e DISPLAY=$DISPLAY \
     -e LIBGL_ALWAYS_SOFTWARE=1 \
+    -e MESA_GL_VERSION_OVERRIDE=3.3 \
     -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
     -v /dev/shm:/dev/shm \
     -v "$DIR:/workspace" \
-    --device /dev/dri \
     house_cleaner:jazzy
 
 echo "=== Container started in detached mode ==="

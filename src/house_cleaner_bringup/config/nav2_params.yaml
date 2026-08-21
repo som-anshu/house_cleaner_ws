@@ -57,8 +57,7 @@ controller_server:
       # Rollout batches for MPPI (reduced for container stability)
       rollout_batch_size: 4
       number_fn_value: 1280
-      # Collision checker for trajectory evaluation
-      collision_checker: 0
+      # Collision checking handled by CostCritic above
       critics: [
         "ConstraintCritic", "CostCritic", "GoalCritic",
         "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic",

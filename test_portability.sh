@@ -6,17 +6,23 @@
 # 1. No hardcoded absolute paths in tracked files
 # 2. env.sh works dynamically
 # 3. run_house_cleaner.sh is executable and in repo
-# 4. run_docker.sh uses $DIR for volume mount and GUI setup
+# 4. run_docker.sh uses $DIR for volume mount and GUI setup (no --device /dev/dri)
 # 5. Dockerfile has Mesa/GL libraries
 # 6. All launch files are valid Python syntax
 # 7. No external file dependencies
 # 8. README references are correct
 # 9. Config files are valid YAML
 # 10. Collision monitor params present and correct type
-# 11. MPPI params under FollowPath (not controller_server level)
+# 11. MPPI params under FollowPath (batch_size, visualize, regenerate_noises)
 # 12. Lifecycle manager includes collision_monitor in node_names
+# 13. setup.py entry points reference existing modules
+# 14. All launch files registered in setup.py data_files
+# 15. fake_sim files raycast with yaw offset (consistency)
+# 16. fake_sim_lyrical_standalone.py has complete rotation quaternion
+# 17. docker-compose.yml has GUI configuration
+# 18. house_cleaner_assistant_lyrical.py has low-battery RETURNING logic
 
-set -e
+set +e
 PASS=0
 FAIL=0
 
@@ -68,8 +74,8 @@ grep -q 'DISPLAY' run_docker.sh
 check "run_docker.sh passes DISPLAY for GUI mode"
 grep -q '/tmp/.X11-unix' run_docker.sh
 check "run_docker.sh mounts X11 socket"
-grep -q '/dev/dri' run_docker.sh
-check "run_docker.sh maps GPU device"
+grep -q 'MESA_GL_VERSION_OVERRIDE' run_docker.sh
+check "run_docker.sh sets MESA_GL_VERSION_OVERRIDE for software rendering compatibility"
 
 # Test 5: Dockerfile has Mesa/GL libraries
 echo ""
@@ -136,10 +142,14 @@ with open('src/house_cleaner_bringup/config/nav2_params.yaml') as f:
     cfg = yaml.safe_load(f)
 fp = cfg['controller_server']['ros__parameters']['FollowPath']
 assert 'rollout_batch_size' in fp, 'rollout_batch_size not in FollowPath'
-assert 'collision_checker' in fp, 'collision_checker not in FollowPath'
-print('MPPI params in FollowPath')
+assert fp['rollout_batch_size'] == 4, 'rollout_batch_size expected 4'
+assert 'visualize' in fp, 'visualize not in FollowPath'
+assert fp['visualize'] == False, 'visualize expected False'
+assert 'regenerate_noises' in fp, 'regenerate_noises not in FollowPath'
+assert fp['regenerate_noises'] == False, 'regenerate_noises expected False'
+print('MPPI params in FollowPath (batch_size=4, visualize=false, regenerate_noises=false)')
 "
-check "MPPI params (rollout_batch_size, collision_checker) under FollowPath"
+check "MPPI params (batch_size=4, visualize=false, regenerate_noises=false) under FollowPath"
 
 # Test 12: Lifecycle manager includes collision_monitor
 echo ""
@@ -152,12 +162,13 @@ nodes = cfg['lifecycle_manager_navigation']['ros__parameters']['node_names']
 assert 'collision_monitor' in nodes, 'collision_monitor missing from lifecycle node_names'
 print('collision_monitor in lifecycle manager')
 "
+check "collision_monitor included in lifecycle manager node_names"
+
 # Test 13: setup.py entry points reference existing modules
 echo ""
 echo "Test 13: Checking setup.py entry points"
 python3 -c "
 import os
-# fake_sim_lyrical entry point should reference the existing module
 assert os.path.exists('src/house_cleaner_bringup/house_cleaner_bringup/fake_sim_lyrical.py'), \
     'fake_sim_lyrical.py must exist'
 with open('src/house_cleaner_bringup/setup.py') as f:
@@ -178,7 +189,6 @@ for f in os.listdir(launch_dir):
     if os.path.isdir(os.path.join(launch_dir, f)):
         continue
     assert f.endswith('.launch.py'), f
-    # Read setup.py and check the file is registered
     with open('src/house_cleaner_bringup/setup.py') as sf:
         content = sf.read()
     assert f in content, f'{f} not registered in setup.py data_files'
@@ -186,7 +196,7 @@ print('all launch files registered in setup.py')
 "
 check "All launch files registered in setup.py data_files"
 
-# Test 15: fake_sim_lyrical_standalone.py raycasts with yaw offset
+# Test 15: fake_sim files raycast with yaw offset (consistency)
 echo ""
 echo "Test 15: Checking fake_sim raycast consistency"
 grep -q 'self\.yaw +' src/house_cleaner_bringup/house_cleaner_bringup/fake_sim.py
@@ -215,8 +225,8 @@ grep -q 'LIBGL_ALWAYS_SOFTWARE' docker-compose.yml
 check "docker-compose.yml includes software rendering fallback"
 grep -q '/tmp/.X11-unix' docker-compose.yml
 check "docker-compose.yml mounts X11 socket"
-grep -q '/dev/dri' docker-compose.yml
-check "docker-compose.yml maps GPU device"
+grep -q 'MESA_GL_VERSION_OVERRIDE' docker-compose.yml
+check "docker-compose.yml sets MESA_GL_VERSION_OVERRIDE"
 
 # Test 18: house_cleaner_assistant_lyrical.py low battery return-to-dock
 echo ""

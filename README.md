@@ -32,7 +32,6 @@ avoids obstacles, tracks its battery, and docks itself to recharge when low.
 - ROS 2 Jazzy Jalisco
 - Docker 24+ (for containerized mode)
 - X11 server (required for Gazebo GUI)
-- GPU with OpenGL 3.3+ support (for rendering)
 - `xhost +local:docker` permission (for Docker X11 forwarding)
 
 ### Prerequisites
@@ -88,7 +87,8 @@ cd house_cleaner_ws
 cd house_cleaner_ws
 
 # GUI mode: opens Gazebo window on host display
-# Requires: X11 server running, GPU with OpenGL, xhost +local:docker
+# Requires: X11 server running, xhost +local:docker
+# Uses software rendering (LIBGL_ALWAYS_SOFTWARE=1) — no GPU driver needed
 xhost +local:docker
 ./run_docker.sh             # first run: builds the image, then launches
 ./run_docker.sh --build     # force rebuild the image
@@ -125,7 +125,9 @@ Parameters are passed directly to the ROS2 launch system via the entrypoint:
 ### Docker Configuration Notes
 
 - The `docker-compose.yml` is retained for reference; the active launch path uses `./run_docker.sh` which calls `docker run` directly.
-- GUI mode requires X11 socket (`/tmp/.X11-unix`), GPU device (`/dev/dri`), and `DISPLAY` environment variable.
+- GUI mode requires X11 socket (`/tmp/.X11-unix`), `DISPLAY` environment variable, and software rendering (`LIBGL_ALWAYS_SOFTWARE=1`, `MESA_GL_VERSION_OVERRIDE=3.3`).
+- The `--device /dev/dri` GPU passthrough is intentionally omitted — on hosts with NVIDIA GPUs, passing the device causes an EGL conflict (NVIDIA PCI detected but no driver in container) → Gazebo segfault. Mesa software rendering is more reliable for containerized Gazebo.
+- For NVIDIA Container Toolkit: add `--gpus all` and remove `LIBGL_ALWAYS_SOFTWARE=1`.
 - Run `xhost +local:docker` before launching to grant Docker X11 access.
 - The `gz` binary is a Ruby script at `/opt/ros/jazzy/opt/gz_tools_vendor/bin/gz` — not a compiled binary.
 - For raw debugging: `docker exec house_cleaner_jazzy --entrypoint /bin/bash house_cleaner_jazzy`
@@ -323,7 +325,7 @@ src/house_cleaner_bringup/
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | `qt.qpa.xcb: could not connect to display` | No X11 forward or DISPLAY not set | Set `DISPLAY=:0` and run `xhost +local:docker` |
-| `OpenGL 3.3 is not supported` / `Segfault (core dumped)` | GPU drivers not accessible in container | Ensure `--device /dev/dri` and `LIBGL_ALWAYS_SOFTWARE=1` are set |
+| `OpenGL 3.3 is not supported` / `Segfault (core dumped)` | GPU drivers not accessible in container | Use `LIBGL_ALWAYS_SOFTWARE=1` (already set in run_docker.sh). Remove `--device /dev/dri` if using NVIDIA GPU without nvidia-container-toolkit |
 | `controller_server` crashes (SIGABRT) | MPPI visualization overhead | `visualize: false` in nav2_params.yaml |
 | `planner_server` crashes | Costmap dimensions incorrect | Ensure resolution and dimensions produce integer cell counts |
 | `ros2` command not found | Environment not sourced | Run `source /opt/ros/jazzy/setup.bash` |
@@ -362,7 +364,7 @@ chmod +x test_portability.sh
 | 8 | README references env.sh and run_docker.sh |
 | 9 | Config files (YAML) are valid |
 | 10 | collision_monitor parameters present with observation_sources |
-| 11 | MPPI parameters (rollout_batch_size, collision_checker) under FollowPath |
+|| 11 | MPPI params (batch_size=4, visualize=false, regenerate_noises=false) under FollowPath |
 | 12 | collision_monitor included in lifecycle manager node_names |
 | 13 | setup.py entry points reference existing modules |
 | 14 | All launch files registered in setup.py data_files |
@@ -377,7 +379,7 @@ chmod +x test_portability.sh
 ```
 === Portability Test Suite ===
 
-=== Results: 38 passed, 0 failed ===
+=== Results: 44 passed, 0 failed ===
 
 Exit code: 0
 ```
