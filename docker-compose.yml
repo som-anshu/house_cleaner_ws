@@ -9,14 +9,14 @@ services:
     environment:
       - TURTLEBOT3_MODEL=burger
       - ROS_DOMAIN_ID=30
+      # Headless rendering (no display needed, no X11 forwarding)
+      - DISPLAY=
       - GZ_RENDERING_DISABLED=1
       - QT_QPA_PLATFORM=offscreen
       - LIBGL_ALWAYS_SOFTWARE=1
+      - MESA_GL_VERSION_OVERRIDE=3.3
+      - MESA_GLSL_VERSION_OVERRIDE=330
     volumes:
-      - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - /dev/shm:/dev/shm
-    devices:
-      - /dev/dri
-    # For GUI mode, set DISPLAY=:0 and use "headless:=false" in entrypoint
-    # For headless mode (default), do NOT set DISPLAY
+    # For GUI mode, run with ./run_docker_gui.sh instead (sets DISPLAY, mounts X11 socket)
     # command is empty — entrypoint.sh handles launch directly.

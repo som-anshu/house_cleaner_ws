@@ -39,6 +39,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-jazzy-nav2-navfn-planner \
     ros-jazzy-nav2-mppi-controller \
     ros-jazzy-nav2-smoother \
+    libglu1-mesa-dev \
+    libgl1 \
+    libgl1-mesa-dri \
+    mesa-utils \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace
