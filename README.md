@@ -353,24 +353,26 @@ chmod +x test_portability.sh
 |------|-----------|
 | 1 | No hardcoded `/home/koko` paths in tracked files |
 | 2 | `env.sh` uses `BASH_SOURCE` for dynamic path detection |
-| 3 | `run_house_cleaner.sh` uses dynamic path detection |
+| 3 | `run_house_cleaner.sh` exists, executable, uses dynamic paths |
 | 4 | `run_docker_gui.sh` uses `$DIR` for volume mount (not `$HOME`) |
-| 5 | Dockerfile uses ROS2 Jazzy base image |
-| 6 | `fake_sim_lyrical_standalone.py` uses `__file__` for dynamic paths |
-| 7 | All shell scripts are executable |
-| 8 | `entrypoint.sh` handles headless parameter |
-| 9 | `docker-compose.yml` configured with correct image |
-| 10 | README.md contains all required documentation sections |
+| 5 | Dockerfile includes Mesa/GL libraries for rendering support |
+| 6 | All launch files parse as valid Python |
+| 7 | No external symlinks in workspace root |
+| 8 | README references `env.sh` and `run_docker_gui.sh` |
+| 9 | Config files (YAML) are valid |
+| 10 | `collision_monitor` parameters present with `observation_sources` |
+| 11 | MPPI parameters (`rollout_batch_size`, `collision_checker`) under `FollowPath` |
+| 12 | `collision_monitor` excluded from lifecycle manager `node_names` |
+| - | Plus 14 additional sub-checks within each test |
 
 ### Expected Output
 
 ```
-=== Test Summary ===
-Total: 12
-Passed: 12
-Failed: 0
+=== Portability Test Suite ===
 
-=== ALL TESTS PASSED ===
+=== Results: 26 passed, 0 failed ===
+
+Exit code: 0
 ```
 
 ---
