@@ -46,14 +46,20 @@ if ! $DOCKER image inspect house_cleaner:jazzy >/dev/null 2>&1; then
     $DOCKER build -t house_cleaner:jazzy .
 fi
 
-# Run with GUI mode - pass headless:=false to the entrypoint
-$DOCKER run -it --rm \
+# Run with GUI mode - use -d for detached mode (no TTY required)
+# Pass headless:=false to enable Gazebo GUI
+# Map workspace volume for live code updates
+$DOCKER run -d --rm \
     --name house_cleaner_jazzy \
     -e TURTLEBOT3_MODEL=burger \
     -e ROS_DOMAIN_ID=30 \
     -e DISPLAY=$DISPLAY \
     -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
     -v /dev/shm:/dev/shm \
+    -v "$HOME/house_cleaner_ws:/workspace" \
     --device /dev/dri \
     house_cleaner:jazzy \
     headless:=false
+
+echo "=== Container started in detached mode ==="
+echo "Check logs with: docker logs -f house_cleaner_jazzy"
