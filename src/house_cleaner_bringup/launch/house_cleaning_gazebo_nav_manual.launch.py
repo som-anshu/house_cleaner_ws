@@ -35,7 +35,6 @@ NAV2_PARAMS = os.path.join(BRINGUP, 'config', 'nav2_params.yaml')
 
 def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time', default='true')
-    headless = LaunchConfiguration('headless', default='true')
     map_yaml = LaunchConfiguration(
         'map',
         default=os.path.join(BRINGUP, 'config', 'house_room_map.yaml'),
@@ -52,7 +51,6 @@ def generate_launch_description():
         ),
         launch_arguments={
             'use_sim_time': use_sim_time,
-            'headless': headless,
             'world': 'house_room.world',
             'x_pose': '0.0',
             'y_pose': '0.0',
@@ -175,9 +173,6 @@ def generate_launch_description():
     ld.add_action(DeclareLaunchArgument(
         'use_sim_time', default_value='true',
         description='Use Gazebo /clock (must be true with Gazebo)'))
-    ld.add_action(DeclareLaunchArgument(
-        'headless', default_value='true',
-        description='true = no Gazebo GUI'))
     ld.add_action(DeclareLaunchArgument(
         'map', default_value=os.path.join(BRINGUP, 'config', 'house_room_map.yaml'),
         description='Prebuilt map yaml for localization'))

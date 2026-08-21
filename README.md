@@ -31,8 +31,9 @@ avoids obstacles, tracks its battery, and docks itself to recharge when low.
 - Ubuntu 24.04 LTS (Noble Numbat)
 - ROS 2 Jazzy Jalisco
 - Docker 24+ (for containerized mode)
-- X11 server (for GUI mode)
-- GPU with OpenGL 3.3+ support (for GUI rendering; headless mode does not require GPU)
+- X11 server (required for Gazebo GUI)
+- GPU with OpenGL 3.3+ support (for rendering)
+- `xhost +local:docker` permission (for Docker X11 forwarding)
 
 ### Prerequisites
 
@@ -86,32 +87,31 @@ cd house_cleaner_ws
 ```bash
 cd house_cleaner_ws
 
-# Headless mode (default): no GUI, runs in container only
-./run_docker.sh            # first run: builds the image, then launches
-./run_docker.sh --build    # force rebuild the image
-./run_docker.sh            # subsequent runs: reuse cached image
-
 # GUI mode: opens Gazebo window on host display
+# Requires: X11 server running, GPU with OpenGL, xhost +local:docker
 xhost +local:docker
-./run_docker_gui.sh
+./run_docker.sh             # first run: builds the image, then launches
+./run_docker.sh --build     # force rebuild the image
+./run_docker.sh             # subsequent runs: reuse cached image
+
+# Optional parameters can be passed directly:
+./run_docker.sh --battery_drain_rate 0.3
+./run_docker.sh mission_strip_width:=0.4
 ```
 
-Both scripts automatically kill any previous house-cleaner instance (host ROS2/Gazebo/RViz processes plus the old container) before starting a fresh simulation.
+The script automatically kills any previous house-cleaner instance (host ROS2/Gazebo/RViz processes plus the old container) before starting a fresh simulation.
 
 ### Docker Launch Parameters
 
 Parameters are passed directly to the ROS2 launch system via the entrypoint:
 
 ```bash
-# Headless mode with default parameters
+# GUI mode with default parameters
 ./run_docker.sh
 
-# Custom parameters
+# Custom parameters (passed directly to the ROS2 launch system)
 ./run_docker.sh --battery_drain_rate 0.3
 ./run_docker.sh mission_strip_width:=0.4
-
-# GUI mode with custom parameters
-./run_docker_gui.sh --battery_drain_rate 0.25 --mission_strip_width 0.35
 ```
 
 | Parameter | Default | Description |
@@ -121,15 +121,14 @@ Parameters are passed directly to the ROS2 launch system via the entrypoint:
 | `battery_low_threshold` | `35.0 %` | Return to dock at this battery percent |
 | `battery_charge_target` | `95.0 %` | Resume cleaning after charging to this percent |
 | `mission_strip_width` | `0.35 m` | Boustrophedon lane spacing |
-| `headless` | `true` | Set to `false` to enable Gazebo GUI |
 
 ### Docker Configuration Notes
 
-- The `docker-compose.yml` configures software rendering by default (`LIBGL_ALWAYS_SOFTWARE=1`, `GZ_RENDERING_DISABLED=1`) for headless reliability.
-- Headless mode disables rendering entirely — no GPU required.
-- GUI mode requires X11 access (`xhost +local:docker`) and a valid `DISPLAY` environment variable.
-- If the `gz` command fails inside the container, the entrypoint wraps it; bypass with `docker exec house_cleaner_jazzy --entrypoint '' bash` for raw debugging.
+- The `docker-compose.yml` is retained for reference; the active launch path uses `./run_docker.sh` which calls `docker run` directly.
+- GUI mode requires X11 socket (`/tmp/.X11-unix`), GPU device (`/dev/dri`), and `DISPLAY` environment variable.
+- Run `xhost +local:docker` before launching to grant Docker X11 access.
 - The `gz` binary is a Ruby script at `/opt/ros/jazzy/opt/gz_tools_vendor/bin/gz` — not a compiled binary.
+- For raw debugging: `docker exec house_cleaner_jazzy --entrypoint /bin/bash house_cleaner_jazzy`
 
 ---
 
@@ -173,7 +172,7 @@ export ROS_DOMAIN_ID=30
 ```bash
 # Terminal 1: kill stale instances, then start the full simulation
 bash src/house_cleaner_bringup/scripts/kill_house_cleaner.sh
-ros2 launch house_cleaner_bringup house_cleaning_auto.launch.py headless:=false
+ros2 launch house_cleaner_bringup house_cleaning_auto.launch.py
 
 # Terminal 2: battery monitor
 python3 src/house_cleaner_bringup/scripts/battery_monitor.py
@@ -187,8 +186,7 @@ ros2 launch house_cleaner_bringup house_cleaning_auto.launch.py \
   battery_charge_rate:=0.80 \
   battery_low_threshold:=35.0 \
   battery_charge_target:=95.0 \
-  mission_strip_width:=0.35 \
-  headless:=true
+  mission_strip_width:=0.35
 ```
 
 | Parameter | Default | Description |
@@ -198,7 +196,6 @@ ros2 launch house_cleaner_bringup house_cleaning_auto.launch.py \
 | `battery_low_threshold` | `35.0 %` | Return to dock at this battery percent |
 | `battery_charge_target` | `95.0 %` | Resume cleaning after charging to this percent |
 | `mission_strip_width` | `0.35 m` | Boustrophedon lane spacing |
-| `headless` | `true` | `true` = no Gazebo GUI, `false` = show GUI |
 
 ---
 
@@ -209,7 +206,7 @@ ros2 launch house_cleaner_bringup house_cleaning_auto.launch.py \
 | `./run_house_cleaner.sh` | Lyrical/Jazzy direct run: fake_sim + assistant (no Gazebo) |
 | `ros2 launch house_cleaner_bringup house_cleaning_fake_sim.launch.py` | Fake-sim Nav2 only (no Gazebo, fast) |
 | `ros2 launch house_cleaner_bringup house_cleaning_slam.launch.py` | SLAM-only mapping |
-| `ros2 launch house_cleaner_bringup house_cleaning_gazebo_nav_manual.launch.py headless:=false` | Gazebo with prebuilt map and AMCL |
+| `ros2 launch house_cleaner_bringup house_cleaning_gazebo_nav_manual.launch.py` | Gazebo with prebuilt map and AMCL |
 
 ---
 
@@ -325,9 +322,9 @@ src/house_cleaner_bringup/
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `qt.qpa.xcb: could not connect to display` | No X11 forward or DISPLAY not set | Use headless mode (`./run_docker.sh`) or set up X11 access |
-| `OpenGL 3.3 is not supported` / `Segfault (core dumped)` | Gazebo rendering fails in headless container | Set `GZ_RENDERING_DISABLED=1` and `LIBGL_ALWAYS_SOFTWARE=1` (default in headless mode) |
-| `controller_server` crashes (SIGABRT) | MPPI visualization in headless mode | `visualize: false` in nav2_params.yaml |
+| `qt.qpa.xcb: could not connect to display` | No X11 forward or DISPLAY not set | Set `DISPLAY=:0` and run `xhost +local:docker` |
+| `OpenGL 3.3 is not supported` / `Segfault (core dumped)` | GPU drivers not accessible in container | Ensure `--device /dev/dri` and `LIBGL_ALWAYS_SOFTWARE=1` are set |
+| `controller_server` crashes (SIGABRT) | MPPI visualization overhead | `visualize: false` in nav2_params.yaml |
 | `planner_server` crashes | Costmap dimensions incorrect | Ensure resolution and dimensions produce integer cell counts |
 | `ros2` command not found | Environment not sourced | Run `source /opt/ros/jazzy/setup.bash` |
 | Assistant times out on `/map` | SLAM slow to initialize | 120s timeout with progress logging; wait for first map |
@@ -358,11 +355,11 @@ chmod +x test_portability.sh
 | 1 | No hardcoded `/home/koko` paths in tracked files |
 | 2 | `env.sh` uses `BASH_SOURCE` for dynamic path detection |
 | 3 | `run_house_cleaner.sh` exists, executable, uses dynamic paths |
-| 4 | `run_docker_gui.sh` uses `$DIR` for volume mount (not `$HOME`) |
+| 4 | `run_docker.sh` uses `$DIR` for volume mount, passes `DISPLAY`, mounts X11 socket |
 | 5 | Dockerfile includes Mesa/GL libraries for rendering support |
 | 6 | All launch files parse as valid Python |
 | 7 | No external symlinks in workspace root |
-| 8 | README references `env.sh` and `run_docker_gui.sh` |
+| 8 | README references `env.sh` and `run_docker.sh` |
 | 9 | Config files (YAML) are valid |
 | 10 | `collision_monitor` parameters present with `observation_sources` |
 | 11 | MPPI parameters (`rollout_batch_size`, `collision_checker`) under `FollowPath` |
@@ -374,7 +371,7 @@ chmod +x test_portability.sh
 ```
 === Portability Test Suite ===
 
-=== Results: 26 passed, 0 failed ===
+=== Results: 31 passed, 0 failed ===
 
 Exit code: 0
 ```
@@ -388,5 +385,5 @@ Exit code: 0
 - Auto-docking and recharging
 - Obstacle avoidance
 - Dual simulator support (Gazebo and fake sim)
-- Docker containerization with headless and GUI modes
+- Docker containerization with GUI mode (X11 forwarding)
 - Version-controlled on GitHub via SSH

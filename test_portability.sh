@@ -6,10 +6,10 @@
 # 1. No hardcoded absolute paths in tracked files
 # 2. env.sh works dynamically
 # 3. run_house_cleaner.sh is executable and in repo
-# 4. run_docker_gui.sh uses $DIR for volume mount
+# 4. run_docker.sh uses $DIR for volume mount and GUI setup
 # 5. Dockerfile has Mesa/GL libraries
 # 6. All launch files are valid Python syntax
-# 7. No external file dependencies (run_house_cleaner.sh symlink target)
+# 7. No external file dependencies
 # 8. README references are correct
 # 9. Config files are valid YAML
 # 10. Collision monitor params present and correct type
@@ -33,11 +33,11 @@ check() {
 echo "=== Portability Test Suite ==="
 echo ""
 
-# Test 1: No hardcoded /home/koko paths in tracked files (excluding test script, README, and build artifacts)
+# Test 1: No hardcoded /home/koko paths in tracked files
 echo "Test 1: Checking for hardcoded paths in tracked files"
 RESULT=$(grep -rn '/home/koko' \
     --include='*.py' --include='*.sh' --include='*.yaml' --include='*.yml' \
-    --include='*.bash' src/ run_docker.sh run_docker_gui.sh run_house_cleaner.sh env.sh entrypoint.sh 2>/dev/null || true)
+    --include='*.bash' src/ run_docker.sh run_house_cleaner.sh env.sh entrypoint.sh 2>/dev/null || true)
 [ -z "$RESULT" ]
 check "No hardcoded /home/koko paths"
 
@@ -54,16 +54,22 @@ echo "Test 3: Checking run_house_cleaner.sh"
 check "run_house_cleaner.sh exists"
 [ -x run_house_cleaner.sh ]
 check "run_house_cleaner.sh is executable"
-! grep -q '/home/koko/.*run_house' $(find /home/koko/house_cleaner_ws -maxdepth 1 -name 'run_house*') 2>/dev/null || true
-check "run_house_cleaner.sh uses dynamic paths"
+grep -q 'SCRIPT_DIR\|BASH_SOURCE\|dirname' run_house_cleaner.sh
+check "run_house_cleaner.sh uses dynamic path detection"
 
-# Test 4: run_docker_gui.sh uses $DIR for volume mount
+# Test 4: run_docker.sh uses $DIR for volume mount and GUI setup
 echo ""
-echo "Test 4: Checking run_docker_gui.sh volume mount"
-grep -q 'SCRIPT_DIR\|BASH_SOURCE\|dirname' run_docker_gui.sh
-check "run_docker_gui.sh uses dynamic path detection"
-grep -q '\$DIR' run_docker_gui.sh
-check "run_docker_gui.sh uses \$DIR for workspace mount"
+echo "Test 4: Checking run_docker.sh GUI configuration"
+grep -q 'SCRIPT_DIR\|BASH_SOURCE\|dirname' run_docker.sh
+check "run_docker.sh uses dynamic path detection"
+grep -q '\$DIR' run_docker.sh
+check "run_docker.sh uses \$DIR for workspace mount"
+grep -q 'DISPLAY' run_docker.sh
+check "run_docker.sh passes DISPLAY for GUI mode"
+grep -q '/tmp/.X11-unix' run_docker.sh
+check "run_docker.sh mounts X11 socket"
+grep -q '/dev/dri' run_docker.sh
+check "run_docker.sh maps GPU device"
 
 # Test 5: Dockerfile has Mesa/GL libraries
 echo ""
@@ -79,10 +85,10 @@ for f in src/house_cleaner_bringup/launch/*.launch.py; do
     check "$f parses as valid Python"
 done
 
-# Test 7: No external file dependencies (run_house_cleaner.sh symlink target)
+# Test 7: No external file dependencies
 echo ""
 echo "Test 7: Checking for external symlinks"
-RESULT=$(find . -maxdepth 1 -type l -ls 2>/dev/null | grep -v '^\.' || true)
+RESULT=$(find . -maxdepth 1 -type l -ls 2>/dev/null || true)
 [ -z "$RESULT" ]
 check "No external symlinks in workspace root"
 
@@ -91,8 +97,10 @@ echo ""
 echo "Test 8: Checking README references"
 grep -q 'env\.sh' README.md
 check "README references env.sh"
-grep -q 'run_docker_gui\.sh' README.md
-check "README references run_docker_gui.sh"
+grep -q 'run_docker\.sh' README.md
+check "README references run_docker.sh"
+grep -q 'xhost' README.md
+check "README documents X11 setup requirement"
 
 # Test 9: Config files are valid YAML
 echo ""
@@ -102,18 +110,26 @@ check "nav2_params.yaml is valid YAML"
 python3 -c "import yaml; yaml.safe_load(open('docker-compose.yml'))"
 check "docker-compose.yml is valid YAML"
 
-# Test 10: Collision monitor params present
+# Test 10: Collision monitor params present and correct type
 echo ""
 echo "Test 10: Checking collision_monitor params"
 grep -q 'collision_monitor:' src/house_cleaner_bringup/config/nav2_params.yaml
 check "collision_monitor params present"
 grep -q 'observation_sources' src/house_cleaner_bringup/config/nav2_params.yaml
 check "observation_sources defined for collision_monitor"
+python3 -c "
+import yaml
+with open('src/house_cleaner_bringup/config/nav2_params.yaml') as f:
+    cfg = yaml.safe_load(f)
+sources = cfg['collision_monitor']['ros__parameters']['observation_sources']
+assert isinstance(sources, list), f'observation_sources is {type(sources)}, expected list'
+print('observation_sources is string_array')
+"
+check "observation_sources is string_array (not string)"
 
 # Test 11: MPPI params under FollowPath
 echo ""
 echo "Test 11: Checking MPPI parameter placement"
-# rollout_batch_size should be under FollowPath (8-space indent inside FollowPath)
 python3 -c "
 import yaml
 with open('src/house_cleaner_bringup/config/nav2_params.yaml') as f:

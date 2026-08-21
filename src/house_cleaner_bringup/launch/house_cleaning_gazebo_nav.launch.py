@@ -33,7 +33,6 @@ NAV2_BRINGUP = get_package_share_directory('nav2_bringup')
 
 
 def generate_launch_description():
-    headless = LaunchConfiguration('headless', default='true')
     map_yaml = LaunchConfiguration(
         'map',
         default=os.path.join(BRINGUP, 'config', 'house_room_map.yaml'),
@@ -44,7 +43,6 @@ def generate_launch_description():
             os.path.join(BRINGUP, 'launch', 'gazebo_house_cleaning.launch.py')
         ),
         launch_arguments={
-            'headless': headless,
             'x_pose': '0.0',
             'y_pose': '0.0',
         }.items()
@@ -66,9 +64,6 @@ def generate_launch_description():
     )
 
     ld = LaunchDescription()
-    ld.add_action(DeclareLaunchArgument(
-        'headless', default_value='true',
-        description='true = no Gazebo GUI'))
     ld.add_action(DeclareLaunchArgument(
         'map', default_value=os.path.join(BRINGUP, 'config', 'house_room_map.yaml'),
         description='Saved SLAM map yaml for localization'))

@@ -54,7 +54,7 @@ controller_server:
         time_step: 3
       AckermannConstraints:
         min_turning_r: 0.2
-      # Rollout batches for MPPI (reduced for headless container stability)
+      # Rollout batches for MPPI (reduced for container stability)
       rollout_batch_size: 4
       number_fn_value: 1280
       # Collision checker for trajectory evaluation

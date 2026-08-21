@@ -30,7 +30,6 @@ BRINGUP = get_package_share_directory('house_cleaner_bringup')
 
 def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time', default='true')
-    headless = LaunchConfiguration('headless', default='true')
 
     gazebo_sim = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -38,7 +37,6 @@ def generate_launch_description():
         ),
         launch_arguments={
             'use_sim_time': use_sim_time,
-            'headless': headless,
         }.items()
     )
 
@@ -77,9 +75,6 @@ def generate_launch_description():
     ld.add_action(DeclareLaunchArgument(
         'use_sim_time', default_value='true',
         description='Use Gazebo /clock (must be true with Gazebo)'))
-    ld.add_action(DeclareLaunchArgument(
-        'headless', default_value='true',
-        description='true = no Gazebo GUI'))
 
     ld.add_action(gazebo_sim)
     ld.add_action(slam_toolbox)
