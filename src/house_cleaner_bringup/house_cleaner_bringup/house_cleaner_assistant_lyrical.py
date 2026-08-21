@@ -67,7 +67,6 @@ class HouseCleanerAssistantLyrical(Node):
         self.state = "INITIALIZING"
         self.goals = []
         self.goal_idx = 0
-        self.current_goal = None
         self.last_scan = None
         self.current_pose = (0.0, 0.0, 0.0)
 
@@ -97,8 +96,6 @@ class HouseCleanerAssistantLyrical(Node):
         y = msg.pose.pose.position.y
         q = msg.pose.pose.orientation
         yaw = yaw_from_quat(q)
-        vx = msg.twist.twist.linear.x
-        vy = msg.twist.twist.linear.y
         self.current_pose = (x, y, yaw)
 
     def scan_callback(self, msg):
@@ -116,7 +113,7 @@ class HouseCleanerAssistantLyrical(Node):
 
         while y <= Y_MAX - self.strip_width / 2:
             if row % 2 == 0:
-                x0, x1, yaw0, yaw1 = X_MIN + margin, X_MAX - margin, 0.0, 0.0
+                x0, x1, yaw0, yaw1 = X_MIN + margin, X_MAX - margin, 0.0, math.pi
             else:
                 x0, x1, yaw0, yaw1 = X_MAX - margin, X_MIN + margin, math.pi, 0.0
 
@@ -124,6 +121,8 @@ class HouseCleanerAssistantLyrical(Node):
             while (row % 2 == 0 and x < x1) or (row % 2 == 1 and x > x1):
                 self.goals.append((x, y, yaw0))
                 x += 0.5 if (row % 2 == 0) else -0.5
+            # Add the endpoint goal for this row
+            self.goals.append((x1, y, yaw1))
             y += self.strip_width
             row += 1
 
@@ -194,6 +193,12 @@ class HouseCleanerAssistantLyrical(Node):
         if not self.docked and self.state == "CLEANING":
             self.battery_pct = max(0.0, self.battery_pct - self.drain_rate * dt)
 
+        # Check for low battery during cleaning
+        if self.state == "CLEANING" and not self.docked:
+            if self.battery_pct <= self.low_threshold:
+                self.state = "RETURNING"
+                self.get_logger().warn(f"Low battery ({self.battery_pct:.1f}%) - returning to dock")
+
         # Publish battery state
         battery = BatteryState()
         battery.header.stamp = self.get_clock().now().to_msg()
@@ -212,11 +217,7 @@ class HouseCleanerAssistantLyrical(Node):
             self.goal_idx = 0
 
         elif self.state == "CLEANING":
-            # Check battery
-            if self.battery_pct <= self.low_threshold:
-                self.state = "RETURNING"
-                self.get_logger().warn(f"Low battery ({self.battery_pct:.1f}%) - returning to dock")
-            elif self.goal_idx < len(self.goals):
+            if self.goal_idx < len(self.goals):
                 # Navigate to next goal
                 gx, gy, gyaw = self.goals[self.goal_idx]
                 cmd, reached = self.simple_navigation(gx, gy, gyaw)

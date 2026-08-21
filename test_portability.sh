@@ -152,8 +152,6 @@ nodes = cfg['lifecycle_manager_navigation']['ros__parameters']['node_names']
 assert 'collision_monitor' in nodes, 'collision_monitor missing from lifecycle node_names'
 print('collision_monitor in lifecycle manager')
 "
-# 15. fake_sim_lyrical_standalone.py raycasts with yaw offset
-
 # Test 13: setup.py entry points reference existing modules
 echo ""
 echo "Test 13: Checking setup.py entry points"
@@ -207,6 +205,24 @@ grep -q 'rotation\.y = 0' src/house_cleaner_bringup/house_cleaner_bringup/fake_s
 check "fake_sim_lyrical_standalone.py sets rotation.y = 0"
 grep -q 'rotation\.z = math.sin' src/house_cleaner_bringup/house_cleaner_bringup/fake_sim_lyrical_standalone.py
 check "fake_sim_lyrical_standalone.py sets rotation.z"
+
+# Test 17: docker-compose.yml has GUI configuration
+echo ""
+echo "Test 17: Checking docker-compose.yml GUI config"
+grep -q 'DISPLAY' docker-compose.yml
+check "docker-compose.yml passes DISPLAY for GUI"
+grep -q 'LIBGL_ALWAYS_SOFTWARE' docker-compose.yml
+check "docker-compose.yml includes software rendering fallback"
+grep -q '/tmp/.X11-unix' docker-compose.yml
+check "docker-compose.yml mounts X11 socket"
+grep -q '/dev/dri' docker-compose.yml
+check "docker-compose.yml maps GPU device"
+
+# Test 18: house_cleaner_assistant_lyrical.py low battery return-to-dock
+echo ""
+echo "Test 18: Checking lyrical assistant low battery behavior"
+grep -q 'RETURNING' src/house_cleaner_bringup/house_cleaner_bringup/house_cleaner_assistant_lyrical.py
+check "lyrical assistant has RETURNING state for low battery"
 
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="

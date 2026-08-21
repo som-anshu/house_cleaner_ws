@@ -9,9 +9,12 @@ services:
     environment:
       - TURTLEBOT3_MODEL=burger
       - ROS_DOMAIN_ID=30
+      - DISPLAY=${DISPLAY}
+      - LIBGL_ALWAYS_SOFTWARE=1
     volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - /dev/shm:/dev/shm
-    # For GUI mode, additional options are needed:
-    # -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix:rw --device /dev/dri
-    # Use ./run_docker.sh instead which handles all GUI setup automatically.
+      - .:/workspace
+    devices:
+      - /dev/dri
     # command is empty — entrypoint.sh handles launch directly.

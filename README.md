@@ -367,6 +367,9 @@ chmod +x test_portability.sh
 | 13 | setup.py entry points reference existing modules |
 | 14 | All launch files registered in setup.py data_files |
 | 15 | fake_sim_lyrical_standalone.py raycasts with yaw offset |
+| 16 | fake_sim_lyrical_standalone.py complete rotation quaternion (x,y,z,w) |
+| 17 | docker-compose.yml has GUI config (DISPLAY, LIBGL, X11, GPU) |
+| 18 | house_cleaner_assistant_lyrical.py has RETURNING state for low battery |
 | - | Plus 14 additional sub-checks within each test |
 
 ### Expected Output
@@ -374,7 +377,7 @@ chmod +x test_portability.sh
 ```
 === Portability Test Suite ===
 
-=== Results: 34 passed, 0 failed ===
+=== Results: 38 passed, 0 failed ===
 
 Exit code: 0
 ```
