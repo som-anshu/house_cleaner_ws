@@ -16,4 +16,5 @@ services:
       - /dev/shm:/dev/shm
     devices:
       - /dev/dri
-    command: ["/entrypoint.sh"]
+    # command is empty — entrypoint.sh handles launch directly.
+    # docker compose up just starts the entrypoint (GUI + battery monitor).
