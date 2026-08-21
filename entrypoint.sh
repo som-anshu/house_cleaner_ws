@@ -1,21 +1,28 @@
 #!/usr/bin/env bash
 # House cleaner Docker entrypoint.
-# Always launches the Gazebo GUI (headless:=false) AND the battery monitor,
-# so the robot is visible and its charge is tracked together.
+# Launches Gazebo (headless or GUI) AND the battery monitor.
 #
 # Usage:
-#   ./run_docker.sh                           # default: GUI + default params
+#   ./run_docker.sh                           # default: headless mode
+#   ./run_docker.sh --build                   # build the image first
+#   ./run_docker.sh headless:=false           # enable Gazebo GUI
 #   ./run_docker.sh --battery_drain_rate 0.3  # custom battery drain
 #   ./run_docker.sh mission_strip_width:=0.4  # tighter coverage spacing
 #
-# Additional launch args: pass any ROS2 launch argument after --
+# For GUI mode, ensure:
+#   1. Display environment variable is set (e.g., export DISPLAY=:0)
+#   2. X11 socket is mounted in docker-compose (/tmp/.X11-unix)
+#   3. X11 access granted: xhost +local:docker
+#
 
 set -e
 source /opt/ros/jazzy/setup.bash
 source /workspace/install/setup.bash
 
 # Build launch command with all arguments passed to this script
-LAUNCH_ARGS="headless:=false"
+# Default to headless mode for reliable execution.
+# Pass "headless:=false" to enable GUI mode.
+LAUNCH_ARGS="headless:=true"
 
 # Convert Docker args to ROS2 launch args
 # e.g., --battery_drain_rate 0.3 -> battery_drain_rate:=0.3
@@ -36,6 +43,10 @@ while [[ $# -gt 0 ]]; do
                 # Just --param (keep as-is, will use default)
                 LAUNCH_ARGS="$LAUNCH_ARGS $arg"
             fi
+            ;;
+        *:=*)
+            # Direct arg like headless:=false
+            LAUNCH_ARGS="$LAUNCH_ARGS $1"
             ;;
         *)
             # Pass through any other arguments

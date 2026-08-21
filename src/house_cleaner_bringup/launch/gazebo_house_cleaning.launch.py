@@ -30,8 +30,7 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import AppendEnvironmentVariable
-from launch.actions import DeclareLaunchArgument
+from launch.actions import AppendEnvironmentVariable, DeclareLaunchArgument
 from launch.actions import IncludeLaunchDescription
 from launch.conditions import UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
@@ -54,6 +53,7 @@ def generate_launch_description():
     world_path = PathJoinSubstitution([BRINGUP, 'worlds', world])
 
     # 1. Physics server (headless by default; -r runs immediately, -s = server only)
+    # Add GZ_RENDERING_DISABLED for environments without GPU access
     gzserver_cmd = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(ros_gz_sim, 'launch', 'gz_sim.launch.py')
@@ -117,6 +117,12 @@ def generate_launch_description():
         'GZ_SIM_SYSTEM_RESOURCE_PATH',
         os.path.join(tbg, 'models')
     )
+    
+    # Disable rendering for headless/container environments
+    set_env_rendering = AppendEnvironmentVariable(
+        'GZ_RENDERING_DISABLED',
+        '1'
+    )
 
     ld = LaunchDescription()
     ld.add_action(DeclareLaunchArgument(
@@ -135,6 +141,7 @@ def generate_launch_description():
 
     ld.add_action(set_env_resources)
     ld.add_action(set_env_model)
+    ld.add_action(set_env_rendering)
     ld.add_action(gzserver_cmd)
     ld.add_action(robot_state_publisher_cmd)
     ld.add_action(spawn_turtlebot_cmd)

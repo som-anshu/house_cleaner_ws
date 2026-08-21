@@ -9,12 +9,14 @@ services:
     environment:
       - TURTLEBOT3_MODEL=burger
       - ROS_DOMAIN_ID=30
-      - DISPLAY=${DISPLAY:-:0}
-    # X11 + GPU for the Gazebo GUI (launched by entrypoint, not headless)
+      - GZ_RENDERING_DISABLED=1
+      - QT_QPA_PLATFORM=offscreen
+      - LIBGL_ALWAYS_SOFTWARE=1
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - /dev/shm:/dev/shm
     devices:
       - /dev/dri
+    # For GUI mode, set DISPLAY=:0 and use "headless:=false" in entrypoint
+    # For headless mode (default), do NOT set DISPLAY
     # command is empty — entrypoint.sh handles launch directly.
-    # docker compose up just starts the entrypoint (GUI + battery monitor).
