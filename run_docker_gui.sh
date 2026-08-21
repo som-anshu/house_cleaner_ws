@@ -56,7 +56,7 @@ $DOCKER run -d --rm \
     -e DISPLAY=$DISPLAY \
     -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
     -v /dev/shm:/dev/shm \
-    -v "$HOME/house_cleaner_ws:/workspace" \
+    -v "$DIR:/workspace" \
     --device /dev/dri \
     house_cleaner:jazzy \
     headless:=false
