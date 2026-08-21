@@ -38,9 +38,9 @@ cd house_cleaner_ws
 ### 2. How to run (every time)
 
 ```bash
+cd house_cleaner_ws
 ./run_docker.sh --build   # first run: builds the image, then launches
 ./run_docker.sh           # later runs: just launches (reuse cached image)
-cd house_cleaner_ws
 ```
 
 `run_docker.sh` **always kills any previous house-cleaner instance** (host ROS2/Gazebo/RViz processes + the old container) before starting a fresh sim, so you never get a stale robot.
