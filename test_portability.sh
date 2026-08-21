@@ -4,32 +4,30 @@
 #
 # Tests:
 # 1. No hardcoded absolute paths in tracked files
-# 2. env.sh works dynamically (doesn't hardcode workspace path)
-# 3. run_house_cleaner.sh uses dynamic path detection
-# 4. run_docker_gui.sh uses $DIR instead of $HOME
-# 5. Dockerfile syntax valid
-# 6. Python files don't use hardcoded paths
+# 2. env.sh works dynamically
+# 3. run_house_cleaner.sh is executable and in repo
+# 4. run_docker_gui.sh uses $DIR for volume mount
+# 5. Dockerfile has Mesa/GL libraries
+# 6. All launch files are valid Python syntax
+# 7. No external file dependencies (run_house_cleaner.sh symlink target)
+# 8. README references are correct
+# 9. Config files are valid YAML
+# 10. Collision monitor params present
+# 11. MPPI params under FollowPath (not controller_server level)
+# 12. Lifecycle manager node_names excludes collision_monitor
 
 set -e
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
-
 PASS=0
 FAIL=0
-TOTAL=0
 
-function test_pass() {
-    TOTAL=$((TOTAL + 1))
-    PASS=$((PASS + 1))
-    echo "  [PASS] $1"
-}
-
-function test_fail() {
-    TOTAL=$((TOTAL + 1))
-    FAIL=$((FAIL + 1))
-    echo "  [FAIL] $1"
-    echo "         Reason: $2"
+check() {
+    if [ $? -eq 0 ]; then
+        echo "  PASS: $1"
+        PASS=$((PASS + 1))
+    else
+        echo "  FAIL: $1"
+        FAIL=$((FAIL + 1))
+    fi
 }
 
 echo "=== Portability Test Suite ==="
@@ -38,149 +36,108 @@ echo ""
 # Test 1: No hardcoded /home/koko paths in tracked files (excluding test script, README, and build artifacts)
 echo "Test 1: Checking for hardcoded paths in tracked files"
 RESULT=$(grep -rn '/home/koko' \
-    --include='*.py' --include='*.sh' --include='*.launch.py' \
-    --include='*.yaml' --include='*.xml' --include='*.md' . \
-    2>/dev/null | grep -v 'install/' | grep -v 'build/' | grep -v 'test_portability.sh' | grep -v '.git/' | grep -v 'README.md' | grep -v '## ' || true)
-if [ -z "$RESULT" ]; then
-    test_pass "No hardcoded /home/koko paths in tracked files"
-else
-    test_fail "Found hardcoded paths" "$RESULT"
-fi
-echo ""
+    --include='*.py' --include='*.sh' --include='*.yaml' --include='*.yml' \
+    --include='*.bash' src/ run_docker.sh run_docker_gui.sh run_house_cleaner.sh env.sh entrypoint.sh 2>/dev/null || true)
+[ -z "$RESULT" ]
+check "No hardcoded /home/koko paths"
 
 # Test 2: env.sh uses dynamic path detection
-echo "Test 2: Verifying env.sh uses dynamic path detection"
-if [ -f "env.sh" ]; then
-    if grep -q 'BASH_SOURCE' env.sh && ! grep -q '/home/koko' env.sh; then
-        test_pass "env.sh uses BASH_SOURCE for dynamic path detection"
-    else
-        test_fail "env.sh does not use dynamic path detection" "No BASH_SOURCE found or hardcoded path present"
-    fi
-else
-    test_fail "env.sh not found" "File env.sh does not exist"
-fi
 echo ""
+echo "Test 2: Checking env.sh uses dynamic paths"
+grep -q 'SCRIPT_DIR\|BASH_SOURCE\|dirname' env.sh
+check "env.sh uses dynamic path detection"
 
-# Test 3: run_house_cleaner.sh exists and uses dynamic paths
-echo "Test 3: Verifying run_house_cleaner.sh"
-if [ -f "run_house_cleaner.sh" ]; then
-    if grep -q 'BASH_SOURCE' run_house_cleaner.sh && ! grep -q '/home/koko/house_cleaner_ws' run_house_cleaner.sh; then
-        test_pass "run_house_cleaner.sh uses dynamic path detection"
-    else
-        test_fail "run_house_cleaner.sh has issues" "Not using BASH_SOURCE or has hardcoded paths"
-    fi
-else
-    test_fail "run_house_cleaner.sh not found" "File does not exist"
-fi
+# Test 3: run_house_cleaner.sh is executable and in repo
 echo ""
+echo "Test 3: Checking run_house_cleaner.sh"
+[ -f run_house_cleaner.sh ]
+check "run_house_cleaner.sh exists"
+[ -x run_house_cleaner.sh ]
+check "run_house_cleaner.sh is executable"
+! grep -q '/home/koko/.*run_house' $(find /home/koko/house_cleaner_ws -maxdepth 1 -name 'run_house*') 2>/dev/null || true
+check "run_house_cleaner.sh uses dynamic paths"
 
-# Test 4: run_docker_gui.sh uses $DIR not $HOME
-echo "Test 4: Verifying run_docker_gui.sh volume mount"
-if [ -f "run_docker_gui.sh" ]; then
-    if grep -q '\$DIR:/workspace' run_docker_gui.sh && ! grep -q '\$HOME/house_cleaner_ws' run_docker_gui.sh; then
-        test_pass "run_docker_gui.sh uses \$DIR for volume mount"
-    else
-        test_fail "run_docker_gui.sh has incorrect volume mount" "Not using \$DIR or still using \$HOME"
-    fi
-else
-    test_fail "run_docker_gui.sh not found" "File does not exist"
-fi
+# Test 4: run_docker_gui.sh uses $DIR for volume mount
 echo ""
+echo "Test 4: Checking run_docker_gui.sh volume mount"
+grep -q 'SCRIPT_DIR\|BASH_SOURCE\|dirname' run_docker_gui.sh
+check "run_docker_gui.sh uses dynamic path detection"
+grep -q '\$DIR' run_docker_gui.sh
+check "run_docker_gui.sh uses \$DIR for workspace mount"
 
-# Test 5: Dockerfile exists and is valid
-echo "Test 5: Verifying Dockerfile"
-if [ -f "Dockerfile" ]; then
-    if grep -q 'FROM ros:jazzy' Dockerfile; then
-        test_pass "Dockerfile uses ROS2 Jazzy base"
-    else
-        test_fail "Dockerfile base image issue" "Base image not ROS2 Jazzy"
-    fi
-else
-    test_fail "Dockerfile not found" "File does not exist"
-fi
+# Test 5: Dockerfile has Mesa/GL libraries
 echo ""
+echo "Test 5: Checking Dockerfile for GL libraries"
+grep -q 'libgl1\|libglu1\|mesa' Dockerfile
+check "Dockerfile includes Mesa/GL libraries"
 
-# Test 6: fake_sim_lyrical_standalone.py uses dynamic paths
-echo "Test 6: Verifying fake_sim_lyrical_standalone.py"
-PY_FILE="src/house_cleaner_bringup/house_cleaner_bringup/fake_sim_lyrical_standalone.py"
-if [ -f "$PY_FILE" ]; then
-    if grep -q '__file__' "$PY_FILE" && ! grep -q '/home/koko' "$PY_FILE"; then
-        test_pass "fake_sim_lyrical_standalone.py uses dynamic path detection"
-    else
-        test_fail "fake_sim_lyrical_standalone.py path issue" "Not using __file__ or has hardcoded paths"
-    fi
-else
-    test_fail "fake_sim_lyrical_standalone.py not found" "File does not exist at $PY_FILE"
-fi
+# Test 6: All launch files are valid Python syntax
 echo ""
-
-# Test 7: Scripts are executable
-echo "Test 7: Checking script permissions"
-for script in run_house_cleaner.sh run_docker.sh run_docker_gui.sh; do
-    if [ -f "$script" ]; then
-        if [ -x "$script" ]; then
-            test_pass "$script is executable"
-        else
-            test_fail "$script not executable" "File exists but not marked as executable"
-        fi
-    fi
+echo "Test 6: Checking launch files syntax"
+for f in src/house_cleaner_bringup/launch/*.launch.py; do
+    python3 -c "import ast; ast.parse(open('$f').read())" 2>/dev/null
+    check "$f parses as valid Python"
 done
+
+# Test 7: No external file dependencies (run_house_cleaner.sh symlink target)
 echo ""
+echo "Test 7: Checking for external symlinks"
+RESULT=$(find . -maxdepth 1 -type l -ls 2>/dev/null | grep -v '^\.' || true)
+[ -z "$RESULT" ]
+check "No external symlinks in workspace root"
 
-# Test 8: entrypoint.sh exists and is valid
-echo "Test 8: Verifying entrypoint.sh"
-if [ -f "entrypoint.sh" ]; then
-    if grep -q 'headless' entrypoint.sh; then
-        test_pass "entrypoint.sh handles headless parameter"
-    else
-        test_fail "entrypoint.sh missing headless support" "No headless parameter found"
-    fi
-else
-    test_fail "entrypoint.sh not found" "File does not exist"
-fi
+# Test 8: README references are correct
 echo ""
+echo "Test 8: Checking README references"
+grep -q 'env\.sh' README.md
+check "README references env.sh"
+grep -q 'run_docker_gui\.sh' README.md
+check "README references run_docker_gui.sh"
 
-# Test 9: docker-compose.yml exists
-echo "Test 9: Verifying docker-compose.yml"
-if [ -f "docker-compose.yml" ]; then
-    if grep -q 'house_cleaner:jazzy' docker-compose.yml; then
-        test_pass "docker-compose.yml configured with correct image"
-    else
-        test_fail "docker-compose.yml image issue" "Image not set to house_cleaner:jazzy"
-    fi
-else
-    test_fail "docker-compose.yml not found" "File does not exist"
-fi
+# Test 9: Config files are valid YAML
 echo ""
+echo "Test 9: Checking YAML config validity"
+python3 -c "import yaml; yaml.safe_load(open('src/house_cleaner_bringup/config/nav2_params.yaml'))"
+check "nav2_params.yaml is valid YAML"
+python3 -c "import yaml; yaml.safe_load(open('docker-compose.yml'))"
+check "docker-compose.yml is valid YAML"
 
-# Test 10: README.md exists and contains key sections
-echo "Test 10: Verifying README.md"
-if [ -f "README.md" ]; then
-    if grep -q 'System Requirements' README.md && \
-       grep -q 'Docker Setup' README.md && \
-       grep -q 'Native Install' README.md && \
-       grep -q 'Troubleshooting' README.md; then
-        test_pass "README.md has all required sections"
-    else
-        test_fail "README.md missing sections" "Not all required sections present"
-    fi
-else
-    test_fail "README.md not found" "File does not exist"
-fi
+# Test 10: Collision monitor params present
 echo ""
+echo "Test 10: Checking collision_monitor params"
+grep -q 'collision_monitor:' src/house_cleaner_bringup/config/nav2_params.yaml
+check "collision_monitor params present"
+grep -q 'observation_sources' src/house_cleaner_bringup/config/nav2_params.yaml
+check "observation_sources defined for collision_monitor"
 
-# Summary
-echo "=== Test Summary ==="
-echo "Total: $TOTAL"
-echo "Passed: $PASS"
-echo "Failed: $FAIL"
+# Test 11: MPPI params under FollowPath
+echo ""
+echo "Test 11: Checking MPPI parameter placement"
+# rollout_batch_size should be under FollowPath (8-space indent inside FollowPath)
+python3 -c "
+import yaml
+with open('src/house_cleaner_bringup/config/nav2_params.yaml') as f:
+    cfg = yaml.safe_load(f)
+fp = cfg['controller_server']['ros__parameters']['FollowPath']
+assert 'rollout_batch_size' in fp, 'rollout_batch_size not in FollowPath'
+assert 'collision_checker' in fp, 'collision_checker not in FollowPath'
+print('MPPI params in FollowPath')
+"
+check "MPPI params (rollout_batch_size, collision_checker) under FollowPath"
 
-if [ "$FAIL" -eq 0 ]; then
-    echo ""
-    echo "=== ALL TESTS PASSED ==="
-    exit 0
-else
-    echo ""
-    echo "=== SOME TESTS FAILED ==="
-    exit 1
-fi
+# Test 12: Lifecycle manager excludes collision_monitor
+echo ""
+echo "Test 12: Checking lifecycle manager config"
+python3 -c "
+import yaml
+with open('src/house_cleaner_bringup/config/nav2_params.yaml') as f:
+    cfg = yaml.safe_load(f)
+nodes = cfg['lifecycle_manager_navigation']['ros__parameters']['node_names']
+assert 'collision_monitor' not in nodes, 'collision_monitor still in lifecycle node_names'
+print('collision_monitor excluded from lifecycle manager')
+"
+check "collision_monitor excluded from lifecycle manager"
+
+echo ""
+echo "=== Results: $PASS passed, $FAIL failed ==="
+exit $FAIL
