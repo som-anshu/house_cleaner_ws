@@ -1,107 +1,149 @@
-# 🤖 House Cleaner Robot
+# House Cleaner Robot
 
-Autonomous room-cleaning robot built on **ROS 2 Jazzy** + **TurtleBot3 Burger**.
+Autonomous room-cleaning robot built on ROS 2 Jazzy and TurtleBot3 Burger.
 
 The robot maps an unknown room with SLAM, plans a full-coverage cleaning path,
 avoids obstacles, tracks its battery, and docks itself to recharge when low.
 
 ---
 
-## 🚀 Quick Start
+## Table of Contents
 
-Pick one path:
-
-| Path | Best for | Effort |
-|------|----------|--------|
-| **[🐳 Docker](#docker-recommended)** | Seeing it run immediately | 1 command |
-| **[🛠️ Native install](#native-install)** | Developing the code | ~10 min setup |
+1. [System Requirements](#system-requirements)
+2. [Quick Start](#quick-start)
+3. [Docker Setup](#docker-setup)
+4. [Native Install](#native-install)
+5. [Alternative Launch Modes](#alternative-launch-modes)
+6. [Features](#features)
+7. [Battery and Docking](#battery-and-docking)
+8. [Cleaning Mission Flow](#cleaning-mission-flow)
+9. [World Geometry](#world-geometry)
+10. [Verification](#verification)
+11. [Repository Layout](#repository-layout)
+12. [Troubleshooting](#troubleshooting)
+13. [Status](#status)
 
 ---
 
-## 🐳 Docker (Recommended)
+## System Requirements
 
-Everything (Gazebo + SLAM + Nav2 + assistant) runs in one container.
-The Gazebo **GUI** and **battery monitor** launch together automatically.
+- Ubuntu 24.04 LTS (Noble Numbat)
+- ROS 2 Jazzy Jalisco
+- Docker 24+ (for containerized mode)
+- X11 server (for GUI mode)
+- GPU with OpenGL 3.3+ support (for GUI rendering; headless mode does not require GPU)
 
-### 1. First-time setup
+### Prerequisites
 
 ```bash
-# a) Install Docker (Linux/Ubuntu) — otherwise: https://docs.docker.com/install
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER     # then log out & back in
+# ROS 2 Jazzy (if not already installed)
+sudo apt update && sudo apt install ros-jazzy-desktop
 
-# b) Clone the repo
+# Additional packages
+sudo apt install ros-jazzy-turtlebot3-gazebo \
+                 ros-jazzy-turtlebot3-description \
+                 ros-jazzy-slam-toolbox \
+                 ros-jazzy-nav2 \
+                 python3-colcon-common-extensions
+
+# Environment variables
+export TURTLEBOT3_MODEL=burger
+export ROS_DOMAIN_ID=30
+```
+
+---
+
+## Quick Start
+
+Choose your preferred path:
+
+| Path | Use Case | Effort |
+|------|----------|--------|
+| [Docker](#docker-setup) | Run immediately without local ROS2 setup | 1 command |
+| [Native Install](#native-install) | Develop or modify the codebase | ~10 min setup |
+
+---
+
+## Docker Setup
+
+The entire stack (Gazebo + SLAM + Nav2 + house cleaner assistant) runs in a single container.
+
+### First-Time Setup
+
+```bash
+# Install Docker
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER     # log out and back in after this
+
+# Clone the repository
 git clone git@github.com:som-anshu/house_cleaner_ws.git
 cd house_cleaner_ws
 ```
 
-### 2. How to run (every time)
+### Launching the Simulation
 
 ```bash
 cd house_cleaner_ws
-./run_docker.sh --build   # first run: builds the image, then launches
-./run_docker.sh           # later runs: just launches (reuse cached image)
+
+# Headless mode (default): no GUI, runs in container only
+./run_docker.sh            # first run: builds the image, then launches
+./run_docker.sh --build    # force rebuild the image
+./run_docker.sh            # subsequent runs: reuse cached image
+
+# GUI mode: opens Gazebo window on host display
+xhost +local:docker
+./run_docker_gui.sh
 ```
 
-`run_docker.sh` **always kills any previous house-cleaner instance** (host ROS2/Gazebo/RViz processes + the old container) before starting a fresh sim, so you never get a stale robot.
+Both scripts automatically kill any previous house-cleaner instance (host ROS2/Gazebo/RViz processes plus the old container) before starting a fresh simulation.
 
-That's it. A Gazebo window opens showing the robot cleaning the room, and the
-terminal shows a live battery bar.
+### Docker Launch Parameters
 
-### Docker notes
-
-- First run builds the image (installs the whole Nav2/Gazebo stack) → **a few
-  minutes**. Later runs start instantly.
-- GUI renders in software (no NVIDIA passthrough configured) → fine to view,
-  just not buttery-smooth.
-- Linux only. On macOS/Windows, run with `DISPLAY`/X11 forwarding configured
-  for GUI apps.
-
-### Docker launch parameters (customize at runtime)
-
-Pass launch arguments after `--` to customize the robot's behavior:
+Parameters are passed directly to the ROS2 launch system via the entrypoint:
 
 ```bash
-# Default: GUI enabled with tighter obstacle navigation
+# Headless mode with default parameters
 ./run_docker.sh
 
-# Custom parameters: faster battery drain, tighter coverage
-./run_docker.sh --battery_drain_rate 0.3 --mission_strip_width 0.4
+# Custom parameters
+./run_docker.sh --battery_drain_rate 0.3
+./run_docker.sh mission_strip_width:=0.4
 
-# Headless mode (no GUI) with default params
-./run_docker.sh --headless true
-
-# Full example with all parameters
-./run_docker.sh --battery_drain_rate 0.25 --battery_charge_rate 1.0 \
-  --battery_low_threshold 40.0 --mission_strip_width 0.35
+# GUI mode with custom parameters
+./run_docker_gui.sh --battery_drain_rate 0.25 --mission_strip_width 0.35
 ```
-
-Available Docker launch parameters:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `battery_drain_rate` | `0.20 %/s` | Battery drain while driving |
 | `battery_charge_rate` | `0.80 %/s` | Battery charge while docked |
-| `battery_low_threshold` | `35.0 %` | Return to dock at this battery % |
+| `battery_low_threshold` | `35.0 %` | Return to dock at this battery percent |
+| `battery_charge_target` | `95.0 %` | Resume cleaning after charging to this percent |
 | `mission_strip_width` | `0.35 m` | Boustrophedon lane spacing |
-| `headless` | `false` | Set `true` to disable Gazebo GUI |
+| `headless` | `true` | Set to `false` to enable Gazebo GUI |
+
+### Docker Configuration Notes
+
+- The `docker-compose.yml` configures the container with X11 and GPU device mappings.
+- Headless mode uses `GZ_RENDERING_DISABLED=1` to avoid requiring GPU drivers.
+- GUI mode requires X11 access (`xhost +local:docker`) and a valid `DISPLAY` environment variable.
 
 ---
 
-## 🛠️ Native Install
+## Native Install
 
-### 1. First-time setup
-
-Prerequisites:
+### Prerequisites
 
 ```bash
-# Ubuntu 24.04 (Noble) with ROS 2 Jazzy already installed
-sudo apt install ros-jazzy-desktop
-sudo apt install ros-jazzy-turtlebot3 ros-jazzy-turtlebot3-gazebo
-sudo apt install ros-jazzy-slam-toolbox ros-jazzy-navigation2 ros-jazzy-nav2-bringup
+# Ubuntu 24.04 with ROS 2 Jazzy already installed
+sudo apt install ros-jazzy-turtlebot3-gazebo
+sudo apt install ros-jazzy-turtlebot3-description
+sudo apt install ros-jazzy-slam-toolbox
+sudo apt install ros-jazzy-nav2
+sudo apt install python3-colcon-common-extensions
 ```
 
-Clone + build:
+### Clone and Build
 
 ```bash
 git clone git@github.com:som-anshu/house_cleaner_ws.git
@@ -109,10 +151,12 @@ cd house_cleaner_ws
 colcon build --symlink-install \
   --cmake-args "-DPython3_EXECUTABLE=/usr/bin/python3" \
   --packages-select house_cleaner_bringup
-source env.sh      # workspace hook (required on this host's old colcon)
+source env.sh    # required for package prefix resolution on older colcon
 ```
 
-Environment (every new terminal):
+### Environment Setup
+
+Every new terminal:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
@@ -121,34 +165,18 @@ export TURTLEBOT3_MODEL=burger
 export ROS_DOMAIN_ID=30
 ```
 
-### 2. How to run (every time)
-
-Kill any previous instance, then launch the full mission:
+### How to Run
 
 ```bash
-# Terminal 1 — kill stale instances, then start the sim (GUI + SLAM + Nav2 + assistant)
-bash scripts/kill_house_cleaner.sh
+# Terminal 1: kill stale instances, then start the full simulation
+bash src/house_cleaner_bringup/scripts/kill_house_cleaner.sh
 ros2 launch house_cleaner_bringup house_cleaning_auto.launch.py headless:=false
 
-# Terminal 2 — battery monitor
-cd ~/house_cleaner_ws
+# Terminal 2: battery monitor
 python3 src/house_cleaner_bringup/scripts/battery_monitor.py
 ```
 
-`kill_house_cleaner.sh` always clears leftover ROS2/Gazebo/RViz processes first,
-so every run starts from a clean state.
-
-### 3. Alternative launch modes
-
-| Command | What it runs |
-|---------|--------------|
-| `ros2 launch house_cleaner_bringup house_cleaning_fake_sim.launch.py` | Fake-sim Nav2 only — fast, no Gazebo |
-| `ros2 launch house_cleaner_bringup house_cleaning_slam.launch.py` | SLAM-only mapping (save with `map_saver_cli`) |
-| `ros2 launch house_cleaner_bringup house_cleaning_gazebo_nav.launch.py headless:=false` | Gazebo + prebuilt map + AMCL |
-
-### 4. Launch parameters (live launch customization)
-
-Modify behavior at launch time with these arguments:
+### Native Launch Parameters
 
 ```bash
 ros2 launch house_cleaner_bringup house_cleaning_auto.launch.py \
@@ -164,124 +192,148 @@ ros2 launch house_cleaner_bringup house_cleaning_auto.launch.py \
 |-----------|---------|-------------|
 | `battery_drain_rate` | `0.20 %/s` | Battery drain while driving |
 | `battery_charge_rate` | `0.80 %/s` | Battery charge while docked |
-| `battery_low_threshold` | `35.0 %` | Return to dock at this battery % |
-| `battery_charge_target` | `95.0 %` | Resume cleaning after charging to this % |
-| `mission_strip_width` | `0.35 m` | Boustrophedon lane spacing (tighter = more coverage, closer to obstacles) |
+| `battery_low_threshold` | `35.0 %` | Return to dock at this battery percent |
+| `battery_charge_target` | `95.0 %` | Resume cleaning after charging to this percent |
+| `mission_strip_width` | `0.35 m` | Boustrophedon lane spacing |
 | `headless` | `true` | `true` = no Gazebo GUI, `false` = show GUI |
 
 ---
 
-## ✨ Features
+## Alternative Launch Modes
 
-- **Autonomous coverage cleaning** — boustrophedon (lawnmower) path planned from the live SLAM map
-- **Live SLAM mapping** — `slam_toolbox` builds the map on the fly; no prebuilt map needed
-- **Battery simulation** — drains while driving, published on `/battery_state`
-- **Auto-docking** — returns to dock at low battery, laser-guided final creep, recharges, resumes cleaning
-- **Obstacle avoidance** — sofa, table, plant, crates mapped and avoided via Nav2 costmaps
-- **Two simulators** — Gazebo Harmonic (physics) or lightweight `fake_sim.py`
+| Command | Description |
+|---------|-------------|
+| `ros2 launch house_cleaner_bringup house_cleaning_fake_sim.launch.py` | Fake-sim navigation only (no Gazebo, fast) |
+| `ros2 launch house_cleaner_bringup house_cleaning_slam.launch.py` | SLAM-only mapping (save with `map_saver_cli`) |
+| `ros2 launch house_cleaner_bringup house_cleaning_gazebo_nav_manual.launch.py headless:=false` | Gazebo with prebuilt map and AMCL |
 
 ---
 
-## 🔋 Battery & Docking
+## Features
 
-Battery is simulated in `house_cleaner_assistant.py`, tunable via ROS params:
+- **Autonomous coverage cleaning** — boustrophedon (lawnmower) path planned from the live SLAM map
+- **Live SLAM mapping** — `slam_toolbox` builds the map on the fly; no prebuilt map required
+- **Battery simulation** — drains while driving, published on `/battery_state`
+- **Auto-docking** — returns to dock at low battery, laser-guided final approach, recharges, resumes cleaning
+- **Obstacle avoidance** — sofa, table, plant, and crates mapped and avoided via Nav2 costmaps
+- **Dual simulators** — Gazebo Harmonic (physics-based) or lightweight fake simulator
+
+---
+
+## Battery and Docking
+
+Battery simulation runs in `house_cleaner_assistant.py` and is configurable via ROS parameters:
 
 | Parameter | Default | Role |
 |-----------|---------|------|
-| `battery.drain_rate` | `0.12 %/s` | Drain while driving |
-| `battery.charge_rate` | `1.20 %/s` | Charge while docked |
+| `battery.drain_rate` | `0.20 %/s` | Drain while driving |
+| `battery.charge_rate` | `0.80 %/s` | Charge while docked |
 | `battery.low_threshold` | `35.0 %` | Return to dock when below |
-| `battery.charge_target` | `95.0 %` | Resume cleaning after charge |
-| `mission.strip_width` | `0.60 m` | Boustrophedon lane spacing (coverage density) |
-| `inflation_radius` (Nav2) | `0.70 m` | Costmap inflation for obstacle avoidance |
+| `battery.charge_target` | `95.0 %` | Resume cleaning after charging |
+| `mission.strip_width` | `0.35 m` | Boustrophedon lane spacing |
 
-### Cleaning Around Walls & Furniture
+### Cleaning Around Walls and Furniture
 
-For tighter coverage **between** walls and furniture (enabling cleaning closer to obstacles):
+For tighter coverage between walls and furniture:
 
-- Reduce `mission.strip_width` (default `0.60 m` → try `0.35 m` for denser paths)
-- Reduce `inflation_radius` in `nav2_params.yaml` (default `0.70 m` → try `0.35 m`)
-- Launch argument: `ros2 launch ... mission_strip_width:=0.35`
+- Reduce `mission.strip_width` (default 0.35 m works for most scenarios)
+- Reduce `inflation_radius` in `nav2_params.yaml` (default 0.35 m)
+- Launch argument: `mission_strip_width:=0.35`
 
 This allows the robot to clean closer to walls and furniture while Nav2's obstacle layer still prevents collisions.
 
 ---
 
-## 🔁 Cleaning Mission Flow
+## Cleaning Mission Flow
 
 ```
-CLEANING → (battery low) → RETURNING → DOCKING → CHARGING → UNDOCKING → RESUME
+CLEANING -> (battery low) -> RETURNING -> DOCKING -> CHARGING -> UNDOCKING -> RESUME
 ```
 
-1. **CLEANING** — boustrophedon goals sent one-by-one via `/navigate_to_pose`
-2. **Battery drain** — simulated while moving
-3. **Low battery** — current goal cancelled, return to dock
-4. **RETURNING** — navigate to dock approach `(0.0, 1.87)`
-5. **DOCKING** — slow laser-guided creep until front laser < `0.13 m`
-6. **CHARGING** — recharge until target
-7. **UNDOCKING** — back out `~0.48 m`, resume cleaning
-8. **Done** — all goals reached → park at dock
+1. **Cleaning** — boustrophedon waypoints sent one-by-one via `/navigate_to_pose`
+2. **Battery drain** — simulated while the robot is moving
+3. **Low battery** — current goal cancelled, navigation returns to dock
+4. **Returning** — navigate to dock approach point at `(0.0, 2.75)`
+5. **Docking** — slow laser-guided approach until front laser reads less than 0.13 m
+6. **Charging** — recharge until target battery level reached
+7. **Undocking** — reverse approximately 0.48 m, resume cleaning
+8. **Complete** — all waypoints visited, robot parks at dock
 
 ---
 
-## 🗺️ World Geometry
+## World Geometry
 
 | Item | Value |
 |------|-------|
-| Room interior | `4.65 m × 5.75 m` |
-| Wall bounds | `x ∈ [-2.325, 2.325]`, `y ∈ [-2.875, 2.875]` |
-| Map | `100 × 116` px @ `0.05 m/px` |
-| Obstacles | sofa, coffee table, plant, crates |
-| Dock center | `(0.0, 2.75)` |
+| Room interior | 4.65 m x 5.75 m |
+| Wall bounds | x in [-2.325, 2.325], y in [-2.875, 2.875] |
+| Map (SLAM) | Approx 94 x 116 cells at 0.05 m/pixel |
+| Obstacles | Sofa, coffee table, plant, wooden crates |
+| Dock center | (0.0, 2.75) |
 
 ---
 
-## 🔍 Verify
+## Verification
 
 ```bash
+# List key topics
 ros2 topic list | grep -E '/(cmd_vel|map|scan|odom|tf|battery_state|dock_pose)'
-ros2 lifecycle get /slam_toolbox          # expect "active"
-ros2 lifecycle get /controller_server     # expect "active"
+
+# Check lifecycle states
+ros2 lifecycle get /slam_toolbox        # expect "active"
+ros2 lifecycle get /controller_server   # expect "active"
 ```
 
 ---
 
-## 📁 Repository Layout
+## Repository Layout
 
 ```
 src/house_cleaner_bringup/
-├── launch/    
-│   ├── house_cleaning_auto.launch.py      ← primary (Gazebo + SLAM + Nav2 + assistant)
-│   ├── house_cleaning_fake_sim.launch.py
-│   ├── house_cleaning_slam.launch.py
-│   └── gazebo_house_cleaning.launch.py
-├── config/    nav2_params.yaml, slam_toolbox params, prebuilt map
-├── house_cleaner_bringup/  
-│   └── house_cleaner_assistant.py, fake_sim.py
-├── scripts/   battery_monitor.py
-└── worlds/    house_room.world
+    launch/
+        house_cleaning_auto.launch.py           # Primary: Gazebo + SLAM + Nav2 + assistant
+        house_cleaning_fake_sim.launch.py       # Lightweight fake simulator
+        house_cleaning_slam.launch.py           # SLAM-only mapping
+        house_cleaning_gazebo_nav_manual.launch.py
+        gazebo_house_cleaning.launch.py         # Gazebo + spawn + bridge
+    config/
+        nav2_params.yaml                        # Full Nav2 parameter set
+        slam_toolbox_params.yaml
+        burger_bridge.yaml                      # Gazebo-ROS bridge (cmd_vel = Twist)
+        house_room_map.yaml                     # Prebuilt map (for AMCL mode)
+    house_cleaner_bringup/
+        house_cleaner_assistant.py              # Coverage planning + battery + docking
+        fake_sim.py                             # Lightweight simulator
+    scripts/
+        battery_monitor.py                      # Terminal battery bar display
+        verify_scan_forward_index.py
+    worlds/
+        house_room.world                        # Gazebo world with obstacles
 ```
 
 ---
 
-## ⚠️ Important Notes
-
-- **Always kill stale ROS2 / Gazebo / RViz processes before relaunching** — overlapping instances cause stale TF and port conflicts.
-- **Re-source `/opt/ros/jazzy/setup.bash` in every new terminal** — `PYTHONPATH` doesn't survive across sessions.
-- **Use `source env.sh`** (not just `install/setup.bash`) — required for package prefix resolution on this host's old colcon.
-
-## 🩹 Troubleshooting
+## Troubleshooting
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `planner_server` crashes at launch | Costmap width/height must be integer cells | Use `93 × 115` cells, not `4.65 × 5.75` m |
-| `ros2` command not found | Env not sourced | `source /opt/ros/jazzy/setup.bash` |
-| Assistant times out waiting for `/map` | SLAM slower to start | Timeout is 120 s with progress logging — just wait |
-| Mission skips goals | Map still growing | Normal — unreachable goals are skipped, mission continues |
-| `/tf` empty or stale | Overlapping node instances | Kill all processes, relaunch one |
+| `qt.qpa.xcb: could not connect to display` | No X11 forward or DISPLAY not set | Use headless mode (`./run_docker.sh`) or set up X11 access |
+| `OpenGL 3.3 is not supported` | No GPU access in container | Set `GZ_RENDERING_DISABLED=1` (default in headless mode) |
+| `controller_server` crashes (SIGABRT) | MPPI visualization in headless mode | `visualize: false` in nav2_params.yaml |
+| `planner_server` crashes | Costmap dimensions incorrect | Ensure resolution and dimensions produce integer cell counts |
+| `ros2` command not found | Environment not sourced | Run `source /opt/ros/jazzy/setup.bash` |
+| Assistant times out on `/map` | SLAM slow to initialize | 120s timeout with progress logging; wait for first map |
+| Mission skips goals | Map still growing | Normal behavior; unreachable goals are skipped |
+| `/tf` empty or stale frames | Overlapping node instances | Kill all processes, relaunch from clean state |
 
 ---
 
-## 📌 Status
+## Status
 
-✅ Autonomous coverage from live SLAM · ✅ Battery + auto-docking · ✅ Obstacle avoidance · ✅ Two simulators · ✅ Docker image · ✅ GitHub (SSH)
+- Autonomous coverage from live SLAM mapping
+- Battery simulation with low-battery return-to-dock
+- Auto-docking and recharging
+- Obstacle avoidance
+- Dual simulator support (Gazebo and fake sim)
+- Docker containerization with headless and GUI modes
+- Version-controlled on GitHub via SSH
