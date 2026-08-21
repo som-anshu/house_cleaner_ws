@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 # One-shot launcher: kills every previous house-cleaner instance (host AND
-# container) then starts a fresh sim. This is the single entry point for the
-# Docker path — run `./run_docker.sh` instead of raw `docker compose up`.
+# container) then starts a fresh sim WITH GUI.
 #
 # Usage:
-#   ./run_docker.sh            # build if needed, then run
+#   ./run_docker.sh            # build if needed, then run with GUI
 #   ./run_docker.sh --build    # force rebuild
+#
+# Prerequisites:
+#   - X11 running on host display
+#   - xhost permission: xhost +local:docker
 set -e
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -18,6 +21,9 @@ fi
 if ! $DOCKER info >/dev/null 2>&1; then
     DOCKER="sudo docker"
 fi
+
+echo "=== Setting up X11 access for GUI mode ==="
+xhost +local:docker 2>/dev/null || true
 
 echo "=== Killing previous house-cleaner instances ==="
 # Host-side ROS2/Gazebo/RViz processes (native sim leftovers)
@@ -32,10 +38,29 @@ $DOCKER rm -f house_cleaner_jazzy 2>/dev/null || true
 
 sleep 1
 
-echo "=== Starting fresh sim ==="
+echo "=== Starting fresh sim WITH GUI ==="
 cd "$DIR"
+
+# Build if needed
 if [ "$1" = "--build" ]; then
-    $DOCKER compose up --build
-else
-    $DOCKER compose up
+    $DOCKER build -t house_cleaner:jazzy .
 fi
+
+if ! $DOCKER image inspect house_cleaner:jazzy >/dev/null 2>&1; then
+    $DOCKER build -t house_cleaner:jazzy .
+fi
+
+# Run with GUI mode - use -d for detached mode (no TTY required)
+$DOCKER run -d --rm \
+    --name house_cleaner_jazzy \
+    -e TURTLEBOT3_MODEL=burger \
+    -e ROS_DOMAIN_ID=30 \
+    -e DISPLAY=$DISPLAY \
+    -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
+    -v /dev/shm:/dev/shm \
+    -v "$DIR:/workspace" \
+    --device /dev/dri \
+    house_cleaner:jazzy
+
+echo "=== Container started in detached mode ==="
+echo "Check logs with: docker logs -f house_cleaner_jazzy"

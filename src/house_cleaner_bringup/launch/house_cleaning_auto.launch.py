@@ -16,7 +16,7 @@
 #   ros2 launch house_cleaner_bringup house_cleaning_auto.launch.py
 #
 # Tuning (launch args): battery_drain_rate (0.20), battery_charge_rate (0.80),
-# battery_low_threshold (35.0), battery_charge_target (95.0), headless (true)
+# battery_low_threshold (35.0), battery_charge_target (95.0)
 #
 # The robot spawns at world (0,0) yaw 0; slam_toolbox anchors the map frame
 # there, so map coordinates == world coordinates. Dock is at (0.0, 2.75).
@@ -39,7 +39,6 @@ SLAM_PARAMS = os.path.join(BRINGUP, 'config', 'slam_toolbox_gazebo_params.yaml')
 
 def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time', default='true')
-    headless = LaunchConfiguration('headless', default='true')
     drain = LaunchConfiguration('battery_drain_rate', default='0.20')
     charge = LaunchConfiguration('battery_charge_rate', default='0.80')
     low = LaunchConfiguration('battery_low_threshold', default='35.0')
@@ -54,7 +53,6 @@ def generate_launch_description():
         ),
         launch_arguments={
             'use_sim_time': use_sim_time,
-            'headless': headless,
             'world': 'house_room.world',
             'x_pose': '0.0',
             'y_pose': '0.0',
@@ -173,9 +171,6 @@ def generate_launch_description():
     ld.add_action(DeclareLaunchArgument(
         'use_sim_time', default_value='true',
         description='Use Gazebo /clock (must be true with Gazebo)'))
-    ld.add_action(DeclareLaunchArgument(
-        'headless', default_value='true',
-        description='true = no Gazebo GUI'))
     ld.add_action(DeclareLaunchArgument(
         'battery_drain_rate', default_value='0.20',
         description='Battery drain %/s while driving'))

@@ -9,7 +9,7 @@
 # resolves exclusively under this package's share dir.
 #
 # Flow (mirrors ROBOTIS Gazebo simulation tutorial):
-#   1. gz-sim server loads the world (-r -s headless; GUI optional)
+#   1. gz-sim server+GUI loads the world (GUI enabled by default)
 #   2. robot_state_publisher publishes URDF TF (use_sim_time=true)
 #   3. ros_gz_sim create spawns the burger
 #   4. ros_gz_bridge parameter_bridge bridges /clock /odom /scan /tf /cmd_vel /imu
@@ -17,8 +17,6 @@
 # Usage:
 #   export TURTLEBOT3_MODEL=burger
 #   ros2 launch house_cleaner_bringup gazebo_house_cleaning.launch.py
-#   # with Gazebo GUI:
-#   ros2 launch house_cleaner_bringup gazebo_house_cleaning.launch.py headless:=false
 #
 # NOTE on cmd_vel: the bridge maps /cmd_vel as plain geometry_msgs/Twist
 # (config/burger_bridge.yaml), so Nav2's controller_server can drive directly.
@@ -30,9 +28,9 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import AppendEnvironmentVariable, DeclareLaunchArgument, SetEnvironmentVariable
+from launch.actions import DeclareLaunchArgument
 from launch.actions import IncludeLaunchDescription
-from launch.conditions import UnlessCondition
+from launch.actions import SetEnvironmentVariable
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch.substitutions import PathJoinSubstitution
@@ -45,15 +43,15 @@ def generate_launch_description():
     BRINGUP = get_package_share_directory('house_cleaner_bringup')
 
     use_sim_time = LaunchConfiguration('use_sim_time', default='true')
-    headless = LaunchConfiguration('headless', default='true')
     world = LaunchConfiguration('world', default='house_room.world')
     x_pose = LaunchConfiguration('x_pose', default='0.0')
     y_pose = LaunchConfiguration('y_pose', default='0.0')
 
     world_path = PathJoinSubstitution([BRINGUP, 'worlds', world])
 
-    # 1. Physics server (headless by default; -r runs immediately, -s = server only)
-    # Add GZ_RENDERING_DISABLED for environments without GPU access
+    # 1. Gazebo: house room with obstacles + charging dock (GUI enabled)
+    # -r runs immediately, -s = server only, -v2 = verbose level 2
+    # GUI is always started (no headless mode)
     gzserver_cmd = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(ros_gz_sim, 'launch', 'gz_sim.launch.py')
@@ -61,12 +59,11 @@ def generate_launch_description():
         launch_arguments={'gz_args': ['-r -s -v2 ', world_path], 'on_exit_shutdown': 'true'}.items()
     )
 
-    # 1b. Optional GUI client — runs UNLESS headless:=true
+    # 1b. GUI client — always enabled
     gzclient_cmd = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(ros_gz_sim, 'launch', 'gz_sim.launch.py')
         ),
-        condition=UnlessCondition(headless),
         launch_arguments={'gz_args': '-g -v2 ', 'on_exit_shutdown': 'true'}.items()
     )
 
@@ -109,22 +106,13 @@ def generate_launch_description():
     )
 
     # House model must resolve from the local share dir, not fuel.gazebosim.org
-    set_env_resources = AppendEnvironmentVariable(
+    set_env_resources = SetEnvironmentVariable(
         'GZ_SIM_RESOURCE_PATH',
         os.path.join(tbg, 'models')
     )
-    set_env_model = AppendEnvironmentVariable(
+    set_env_model = SetEnvironmentVariable(
         'GZ_SIM_SYSTEM_RESOURCE_PATH',
         os.path.join(tbg, 'models')
-    )
-    
-    # Disable rendering for headless/container environments without GPU
-    # Use SetEnvironmentVariable (not Append) to ensure proper overwrite
-    set_env_rendering = SetEnvironmentVariable(
-        'GZ_RENDERING_DISABLED', '1'
-    )
-    set_env_gl = SetEnvironmentVariable(
-        'LIBGL_ALWAYS_SOFTWARE', '1'
     )
 
     ld = LaunchDescription()
@@ -132,11 +120,8 @@ def generate_launch_description():
         'use_sim_time', default_value='true',
         description='Use Gazebo /clock for all nodes (must be true with Gazebo)'))
     ld.add_action(DeclareLaunchArgument(
-        'headless', default_value='true',
-        description='true = server only, no gzclient GUI'))
-    ld.add_action(DeclareLaunchArgument(
         'world', default_value='house_room.world',
-        description='World file under house_cleaner_bringup/worlds (e.g. house_room.world)'))
+        description='World file under house_cleaner_bringup/worlds'))
     ld.add_action(DeclareLaunchArgument(
         'x_pose', default_value='0.0', description='Spawn x (m)'))
     ld.add_action(DeclareLaunchArgument(
@@ -144,8 +129,6 @@ def generate_launch_description():
 
     ld.add_action(set_env_resources)
     ld.add_action(set_env_model)
-    ld.add_action(set_env_rendering)
-    ld.add_action(set_env_gl)
     ld.add_action(gzserver_cmd)
     ld.add_action(robot_state_publisher_cmd)
     ld.add_action(spawn_turtlebot_cmd)
