@@ -3,7 +3,7 @@
 
 Usage:
   source /opt/ros/jazzy/setup.bash
-  source /home/koko/house_cleaner_ws/env.sh
+  source <workspace>/env.sh
   python3 src/house_cleaner_bringup/scripts/battery_monitor.py
 
 Docker/tmux-safe: Uses explicit line breaks instead of cursor positioning,

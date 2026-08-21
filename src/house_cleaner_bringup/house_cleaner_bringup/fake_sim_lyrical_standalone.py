@@ -6,9 +6,12 @@ import sys
 # Set environment before importing rclpy
 os.environ['ROS_DOMAIN_ID'] = '30'
 
-# Add src to path
-sys.path.insert(0, '/home/koko/house_cleaner_ws/src')
-sys.path.insert(0, '/home/koko/house_cleaner_ws/src/house_cleaner_bringup')
+# Add src to path dynamically
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+_src_dir = os.path.dirname(os.path.dirname(_script_dir))  # Go up from house_cleaner_bringup/house_cleaner_bringup to src/
+
+sys.path.insert(0, _src_dir)
+sys.path.insert(0, os.path.dirname(_script_dir))
 
 # Now import and run
 import rclpy

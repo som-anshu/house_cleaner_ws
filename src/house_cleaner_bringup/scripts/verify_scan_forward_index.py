@@ -7,7 +7,7 @@ buggy helper that inspired this used n//2, i.e. the BACK, and the robot
 docked by watching its own rear). Run against any running stack that
 publishes /scan + /map and has map->base_footprint TF:
 
-  source /home/koko/house_cleaner_ws/env.sh
+  source <workspace>/env.sh
   python3 scripts/verify_scan_forward_index.py
 
 For each candidate index (0, n//4, n//2, 3n//4) it raycasts the expected
