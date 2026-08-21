@@ -203,8 +203,9 @@ ros2 launch house_cleaner_bringup house_cleaning_auto.launch.py \
 
 | Command | Description |
 |---------|-------------|
-| `ros2 launch house_cleaner_bringup house_cleaning_fake_sim.launch.py` | Fake-sim navigation only (no Gazebo, fast) |
-| `ros2 launch house_cleaner_bringup house_cleaning_slam.launch.py` | SLAM-only mapping (save with `map_saver_cli`) |
+| `./run_house_cleaner.sh` | Lyrical/Jazzy direct run: fake_sim + assistant (no Gazebo) |
+| `ros2 launch house_cleaner_bringup house_cleaning_fake_sim.launch.py` | Fake-sim Nav2 only (no Gazebo, fast) |
+| `ros2 launch house_cleaner_bringup house_cleaning_slam.launch.py` | SLAM-only mapping |
 | `ros2 launch house_cleaner_bringup house_cleaning_gazebo_nav_manual.launch.py headless:=false` | Gazebo with prebuilt map and AMCL |
 
 ---
