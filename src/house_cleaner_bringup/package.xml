@@ -2,14 +2,18 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>house_cleaner_bringup</name>
-  <version>0.1.0</version>
-  <description>House cleaner bringup for ROS2 Lyrical (minimal build without Nav2/SLAM)</description>
+  <version>0.2.0</version>
+  <description>
+    Autonomous house cleaning robot with SLAM, Nav2 navigation, battery simulation,
+    and auto-docking. Designed for TurtleBot3 Burger in Gazebo Harmonic simulation
+    with Foxglove web visualization.
+  </description>
   <maintainer email="koko@example.com">koko</maintainer>
   <license>MIT</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <!-- Core message/client libraries -->
+  <!-- Core ROS2 message/client libraries -->
   <exec_depend>rclpy</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
@@ -17,20 +21,42 @@
   <exec_depend>nav_msgs</exec_depend>
   <exec_depend>std_msgs</exec_depend>
 
-  <!-- Environment / robot -->
+  <!-- Navigation2 stack -->
+  <exec_depend>nav2_msgs</exec_depend>
+  <exec_depend>nav2_controller</exec_depend>
+  <exec_depend>nav2_planner</exec_depend>
+  <exec_depend>nav2_behaviors</exec_depend>
+  <exec_depend>nav2_bt_navigator</exec_depend>
+  <exec_depend>nav2_waypoint_follower</exec_depend>
+  <exec_depend>nav2_velocity_smoother</exec_depend>
+  <exec_depend>nav2_smoother</exec_depend>
+  <exec_depend>nav2_collision_monitor</exec_depend>
+  <exec_depend>nav2_lifecycle_manager</exec_depend>
+  <exec_depend>nav2_map_server</exec_depend>
+  <exec_depend>nav2_amcl</exec_depend>
+
+  <!-- SLAM -->
+  <exec_depend>slam_toolbox</exec_depend>
+
+  <!-- Robot description and simulation -->
   <exec_depend>turtlebot3_description</exec_depend>
+  <exec_depend>turtlebot3_gazebo</exec_depend>
   <exec_depend>robot_state_publisher</exec_depend>
   <exec_depend>joint_state_publisher</exec_depend>
 
-  <!-- simulation bridge (ros_gz available in lyrical) -->
+  <!-- Gazebo Harmonic integration -->
   <exec_depend>ros_gz_bridge</exec_depend>
   <exec_depend>ros_gz_sim</exec_depend>
 
-  <!-- python launch infrastructure -->
+  <!-- Visualization -->
+  <exec_depend>rviz2</exec_depend>
+  <exec_depend>foxglove_bridge</exec_depend>
+
+  <!-- Teleop control -->
+  <exec_depend>teleop_twist_keyboard</exec_depend>
+
+  <!-- Launch infrastructure -->
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>ament_index_python</exec_depend>
-
-  <!-- Lyrical-specific: collision detection (no Nav2) -->
-  <exec_depend>nav_msgs</exec_depend>
 </package>

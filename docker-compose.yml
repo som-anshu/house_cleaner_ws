@@ -1,24 +1,66 @@
+# =============================================================================
+# docker-compose.yml - House Cleaner Robot Docker Compose Configuration
+# =============================================================================
+# This file defines the Docker Compose service for the house cleaner robot.
+# It includes all necessary configurations for GUI rendering (Gazebo, RViz2)
+# and web-based visualization (Foxglove).
+#
+# Usage:
+#   docker compose up              # Start the simulation
+#   docker compose up --build      # Rebuild and start
+#   docker compose down            # Stop the simulation
+#
+# Prerequisites:
+#   1. X11 server running on host
+#   2. Run: xhost +local:docker
+#   3. Docker and Docker Compose installed
+#
+# Foxglove Access:
+#   Open browser to: http://localhost:8765
+#   Or use Foxglove app: ws://localhost:8765
+# =============================================================================
+
 services:
-  cleaner:
-    image: house_cleaner:jazzy
+  house_cleaner:
     build:
       context: .
+      dockerfile: Dockerfile
     container_name: house_cleaner_jazzy
+    # Keep container running and interactive
     stdin_open: true
     tty: true
+
+    # --- GUI Rendering Configuration ---
     environment:
+      # Display forwarding for X11 (Gazebo GUI, RViz2)
+      - DISPLAY=${DISPLAY:-:0}
+      # Software rendering for environments without GPU drivers
+      # This uses Mesa's llvmpipe renderer which works everywhere
+      - LIBGL_ALWAYS_SOFTWARE=1
+      # Override OpenGL version for Gazebo compatibility with software rendering
+      - MESA_GL_VERSION_OVERRIDE=3.3
+      # ROS2 configuration
       - TURTLEBOT3_MODEL=burger
       - ROS_DOMAIN_ID=30
-      - DISPLAY=${DISPLAY}
-      - LIBGL_ALWAYS_SOFTWARE=1
-      - MESA_GL_VERSION_OVERRIDE=3.3
+
+    # --- Volume Mounts ---
     volumes:
+      # X11 socket for GUI forwarding (required for Gazebo, RViz2)
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      # Shared memory for Gazebo (prevents crashes)
       - /dev/shm:/dev/shm
+      # Workspace source code (for live editing without rebuild)
       - .:/workspace
-    # GPU device passthrough (--device /dev/dri) is intentionally omitted.
-    # On hosts with NVIDIA GPUs, passing /dev/dri causes an EGL conflict inside
-    # the container (NVIDIA PCI detected but no driver) → Gazebo segfault.
-    # LIBGL_ALWAYS_SOFTWARE=1 + Mesa llvmpipe is the reliable fallback.
-    # For NVIDIA Container Toolkit: add `--gpus all` and drop LIBGL_ALWAYS_SOFTWARE.
-    # command is empty — entrypoint.sh handles launch directly.
+
+    # --- Network Configuration ---
+    # Foxglove bridge runs on port 8765 for web visualization
+    ports:
+      - "8765:8765"
+
+    # --- Resource Limits ---
+    # Increase shared memory for Gazebo
+    shm_size: '2gb'
+
+    # --- Restart Policy ---
+    # 'unless-stopped': Auto-restart unless manually stopped
+    restart: unless-stopped

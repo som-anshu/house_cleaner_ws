@@ -12,20 +12,15 @@ setup(
         ('share/house_cleaner_bringup/config', [
             'config/burger_bridge.yaml',
             'config/nav2_params.yaml',
-            'config/slam_toolbox_params.yaml',
             'config/slam_toolbox_gazebo_params.yaml',
-            'config/house_room_map.yaml',
-            'config/house_room_map.pgm']),
+            'config/foxglove_layout.json',
+        ]),
         ('share/house_cleaner_bringup/launch', [
-            'launch/house_cleaning_fake_sim.launch.py',
-            'launch/house_cleaning_fake_sim_lyrical.launch.py',
-            'launch/gazebo_house_cleaning.launch.py',
-            'launch/house_cleaning_slam.launch.py',
-            'launch/house_cleaning_gazebo_slam.launch.py',
-            'launch/house_cleaning_gazebo_nav.launch.py',
-            'launch/house_cleaning_gazebo_nav_manual.launch.py',
             'launch/house_cleaning_auto.launch.py',
-            'launch/house_cleaning_auto_lyrical.launch.py',
+            'launch/gazebo_house_cleaning.launch.py',
+            'launch/foxglove_bridge.launch.py',
+            'launch/rviz2.launch.py',
+            'launch/teleop.launch.py',
         ]),
         ('share/house_cleaner_bringup/worlds', [
             'worlds/house_room.world',
@@ -46,8 +41,7 @@ setup(
     entry_points={
         'console_scripts': [
             'house_cleaner_assistant = house_cleaner_bringup.house_cleaner_assistant:main',
-            'house_cleaner_assistant_lyrical = house_cleaner_bringup.house_cleaner_assistant_lyrical:main',
-            'fake_sim_lyrical = house_cleaner_bringup.fake_sim_lyrical:main',
+            'fake_sim = house_cleaner_bringup.fake_sim:main',
         ],
     },
 )

@@ -1,33 +1,36 @@
 #!/usr/bin/env python3
 """
-house_cleaner_assistant.py
+house_cleaner_assistant.py - Autonomous Cleaning + Auto-Charging Supervisor
+============================================================================
 
-Autonomous cleaning + auto-charging supervisor for the house_cleaner robot.
+This node manages the complete cleaning mission for the house cleaner robot.
+It handles:
+  - Boustrophedon (lawnmower) coverage path planning
+  - Battery simulation (drain while driving, charge while docked)
+  - Low-battery return-to-dock behavior
+  - Laser-guided docking approach
+  - Automatic charging and mission resumption
 
-Runs a complete cleaning mission in an UNKNOWN room (works with any room the
-robot can map — slam_toolbox builds the map live, no prebuilt map needed):
+Mission Flow:
+  CLEANING -> (battery low) -> RETURNING -> DOCKING -> CHARGING -> UNDOCKING -> RESUME
 
-  CLEANING   -> boustrophedon coverage via Nav2 /navigate_to_pose
-  battery    -> drains while driving, simulated /battery_state
-  low bat    -> RETURNING: navigate to dock approach pose
-             -> DOCKING: laser-guided final creep into the dock
-             -> CHARGING: battery recharges
-             -> UNDOCKING: back out, resume coverage
-  coverage   -> complete: return to dock and stay (mission done)
+ROS2 Parameters:
+  battery.drain_rate     - Battery drain %/s while driving (default: 0.12)
+  battery.charge_rate    - Battery charge %/s while docked (default: 1.20)
+  battery.low_threshold  - Battery % to return to dock (default: 35.0)
+  battery.charge_target  - Battery % to resume cleaning (default: 95.0)
+  mission.strip_width    - Boustrophedon lane spacing in meters (default: 0.60)
+  dock.x                 - Dock X position in map frame (default: 0.0)
+  dock.y                 - Dock Y position in map frame (default: 2.75)
+  dock.yaw               - Dock orientation in radians (default: π/2)
 
-Everything is driven from ROS params so demo timing can be tuned:
+Room Geometry (from house_room.world):
+  Interior: 4.65m x 5.75m
+  Wall bounds: x ∈ [-2.325, 2.325], y ∈ [-2.875, 2.875]
+  Dock position: (0.0, 2.75) facing +y (north)
 
-  battery.drain_rate     %/s while driving          (default 0.12)
-  battery.charge_rate    %/s while docked           (default 1.20)
-  battery.low_threshold  %  -> return to dock       (default 35.0)
-  battery.charge_target  %  -> resume cleaning      (default 95.0)
-  mission.strip_width    m  boustrophedon spacing   (default 0.60)
-
-Room geometry (house_room.world interior):
-  x in [-2.325, 2.325], y in [-2.875, 2.875]
-Dock (world == map frame at start):
-  dock body center (0.0, 2.75), south face y = 2.625
-  approach pose (0.0, 1.87) yaw +pi/2, docked pose (0.0, ~2.50) yaw +pi/2
+Author: koko
+License: MIT
 """
 
 import math

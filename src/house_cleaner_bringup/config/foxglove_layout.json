@@ -1,0 +1,94 @@
+{
+  "name": "House Cleaner Robot Layout",
+  "description": "Default Foxglove layout for house cleaner robot visualization",
+  "version": 1,
+  "panels": [
+    {
+      "id": "3d-panel",
+      "type": "3d",
+      "title": "3D View",
+      "config": {
+        "camera": {
+          "position": [10, 10, 10],
+          "target": [0, 0, 0]
+        },
+        "topics": [
+          "/tf",
+          "/robot_state_publisher",
+          "panel://3d-panel"
+        ]
+      }
+    },
+    {
+      "id": "map-panel",
+      "type": "map",
+      "title": "Map View",
+      "config": {
+        "topics": [
+          "/map",
+          "/global_costmap/costmap",
+          "/local_costmap/costmap"
+        ]
+      }
+    },
+    {
+      "id": "laser-panel",
+      "type": " LaserScan",
+      "title": "Laser Scan",
+      "config": {
+        "topics": [
+          "/scan"
+        ]
+      }
+    },
+    {
+      "id": "battery-panel",
+      "type": "plot",
+      "title": "Battery State",
+      "config": {
+        "topics": [
+          "/battery_state"
+        ],
+        "paths": [
+          {
+            "topic": "/battery_state",
+            "value": "percentage",
+            "label": "Battery %"
+          }
+        ]
+      }
+    },
+    {
+      "id": "state-panel",
+      "type": "state",
+      "title": "Robot State",
+      "config": {
+        "topics": [
+          "/odom",
+          "/cmd_vel",
+          "/battery_state"
+        ]
+      }
+    }
+  ],
+  "layout": {
+    "type": "tab",
+    "children": [
+      {
+        "type": "row",
+        "children": [
+          {
+            "type": "column",
+            "children": ["3d-panel", "laser-panel"],
+            "weight": 0.6
+          },
+          {
+            "type": "column",
+            "children": ["map-panel", "battery-panel", "state-panel"],
+            "weight": 0.4
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,25 +1,31 @@
 #!/usr/bin/env python3
+# =============================================================================
+# house_cleaning_auto.launch.py - Main House Cleaning Launch File
+# =============================================================================
+# This is the PRIMARY launch file for the house cleaner robot simulation.
+# It launches the complete autonomous cleaning stack:
 #
-# house_cleaning_auto.launch.py
-#
-# COMPLETE AUTONOMOUS HOUSE-CLEANING DEMO — works in ANY unknown room:
-#
-#   Gazebo (house_room.world: furniture obstacles + charging dock)
-#     + slam_toolbox (live SLAM mapping — no prebuilt map needed)
-#     + Nav2 (manual stack, slam-mode: no map_server/amcl; slam_toolbox
-#             publishes /map AND map->odom, so Nav2 plans on the live map)
-#     + house_cleaner_assistant (boustrophedon coverage, battery sim,
-#             low-battery return-to-dock, laser-guided docking, recharge)
+#   1. Gazebo Harmonic (physics simulation with house_room.world)
+#   2. SLAM Toolbox (real-time mapping from laser scan)
+#   3. Nav2 Navigation Stack (autonomous navigation)
+#   4. House Cleaner Assistant (cleaning + battery + docking)
+#   5. Foxglove Bridge (web visualization on port 8765)
 #
 # Usage:
-#   export TURTLEBOT3_MODEL=burger
 #   ros2 launch house_cleaner_bringup house_cleaning_auto.launch.py
 #
-# Tuning (launch args): battery_drain_rate (0.20), battery_charge_rate (0.80),
-# battery_low_threshold (35.0), battery_charge_target (95.0)
+# Launch Arguments:
+#   battery_drain_rate     - Battery drain while driving (default: 0.20 %/s)
+#   battery_charge_rate    - Battery charge while docked (default: 0.80 %/s)
+#   battery_low_threshold  - Return to dock at this battery % (default: 35.0)
+#   battery_charge_target  - Resume cleaning at this battery % (default: 95.0)
+#   mission_strip_width    - Boustrophedon lane spacing (default: 0.35 m)
 #
-# The robot spawns at world (0,0) yaw 0; slam_toolbox anchors the map frame
-# there, so map coordinates == world coordinates. Dock is at (0.0, 2.75).
+# Verification:
+#   ros2 topic list | grep -E '/(cmd_vel|map|scan|odom|tf|battery_state)'
+#   ros2 lifecycle get /slam_toolbox        # expect "active"
+#   ros2 lifecycle get /controller_server   # expect "active"
+# =============================================================================
 
 import os
 
@@ -167,6 +173,21 @@ def generate_launch_description():
         }],
     )
 
+    # 5. Foxglove Bridge for web-based visualization
+    # Connect via: http://localhost:8765 or ws://localhost:8765
+    foxglove_bridge = Node(
+        package='foxglove_bridge',
+        executable='foxglove_bridge',
+        name='foxglove_bridge',
+        output='screen',
+        parameters=[{
+            'port': 8765,
+            'address': '0.0.0.0',
+            'num_threads': 2,
+            'max_qos_depth': 10,
+        }],
+    )
+
     ld = LaunchDescription()
     ld.add_action(DeclareLaunchArgument(
         'use_sim_time', default_value='true',
@@ -201,5 +222,6 @@ def generate_launch_description():
     ld.add_action(collision_monitor)
     ld.add_action(lifecycle_manager)
     ld.add_action(assistant)
+    ld.add_action(foxglove_bridge)
 
     return ld

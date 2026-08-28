@@ -1,5 +1,42 @@
 #!/usr/bin/env python3
-import rclpy
+"""
+fake_sim.py - Lightweight Robot Simulation for Testing
+======================================================
+
+This node provides a simple robot simulation for testing without Gazebo.
+It simulates:
+  - Robot motion (differential drive)
+  - Laser scan (raycasting against room walls)
+  - Odometry publishing
+  - TF transforms (odom -> base_footprint -> base_link)
+
+Features:
+  - No external dependencies (works without Gazebo)
+  - Configurable room dimensions
+  - Wall collision detection
+  - Real-time laser scan generation
+
+Usage:
+  ros2 launch house_cleaner_bringup fake_sim.launch.py
+
+Parameters:
+  room_width       - Room width in meters (default: 4.65)
+  room_height      - Room height in meters (default: 5.75)
+  robot_radius     - Robot radius for collision (default: 0.22)
+  map_to_odom_x    - Map to odom X offset (default: 0.0)
+  map_to_odom_y    - Map to odom Y offset (default: 0.0)
+
+ROS2 Topics Published:
+  /odom            - Robot odometry
+  /scan            - Laser scan (360 rays)
+  /tf              - Transform broadcasts
+
+ROS2 Topics Subscribed:
+  /cmd_vel         - Velocity commands (Twist)
+
+Author: koko
+License: MIT
+"""
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
