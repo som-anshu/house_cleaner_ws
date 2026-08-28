@@ -1,30 +1,9 @@
 #!/usr/bin/env python3
 # =============================================================================
-# house_cleaning_auto.launch.py - Main House Cleaning Launch File
+# house_cleaning_headless.launch.py
 # =============================================================================
-# This is the PRIMARY launch file for the house cleaner robot simulation.
-# It launches the complete autonomous cleaning stack:
-#
-#   1. Gazebo Harmonic (physics simulation with house_room.world)
-#   2. SLAM Toolbox (real-time mapping from laser scan)
-#   3. Nav2 Navigation Stack (autonomous navigation)
-#   4. House Cleaner Assistant (cleaning + battery + docking)
-#   5. Foxglove Bridge (web visualization on port 8765)
-#
-# Usage:
-#   ros2 launch house_cleaner_bringup house_cleaning_auto.launch.py
-#
-# Launch Arguments:
-#   battery_drain_rate     - Battery drain while driving (default: 0.20 %/s)
-#   battery_charge_rate    - Battery charge while docked (default: 0.80 %/s)
-#   battery_low_threshold  - Return to dock at this battery % (default: 35.0)
-#   battery_charge_target  - Resume cleaning at this battery % (default: 95.0)
-#   mission_strip_width    - Boustrophedon lane spacing (default: 0.35 m)
-#
-# Verification:
-#   ros2 topic list | grep -E '/(cmd_vel|map|scan|odom|tf|battery_state)'
-#   ros2 lifecycle get /slam_toolbox        # expect "active"
-#   ros2 lifecycle get /controller_server   # expect "active"
+# Headless version of house_cleaning_auto.launch.py - no Gazebo GUI.
+# Uses gazebo_house_cleaning_headless.launch.py for server-only Gazebo.
 # =============================================================================
 
 import os
@@ -34,7 +13,6 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.actions import ExecuteProcess
 from launch.actions import IncludeLaunchDescription
-from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -46,20 +24,16 @@ SLAM_PARAMS = os.path.join(BRINGUP, 'config', 'slam_toolbox_gazebo_params.yaml')
 
 def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time', default='true')
-    headless = LaunchConfiguration('headless', default='false')
     drain = LaunchConfiguration('battery_drain_rate', default='0.20')
     charge = LaunchConfiguration('battery_charge_rate', default='0.80')
     low = LaunchConfiguration('battery_low_threshold', default='35.0')
     target = LaunchConfiguration('battery_charge_target', default='95.0')
-    # Mission parameters for cleaning navigation
-    strip = LaunchConfiguration('mission_strip_width', default='0.35')  # Reduced for tighter coverage between obstacles
+    strip = LaunchConfiguration('mission_strip_width', default='0.35')
 
-    # 1. Gazebo: house room with obstacles + charging dock
-    # Default: launch with GUI. For headless mode, use --headless argument
-    # which switches to gazebo_house_cleaning_headless.launch.py via the entrypoint
+    # 1. Gazebo: server only (no GUI)
     gazebo_sim = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            os.path.join(BRINGUP, 'launch', 'gazebo_house_cleaning.launch.py')
+            os.path.join(BRINGUP, 'launch', 'gazebo_house_cleaning_headless.launch.py')
         ),
         launch_arguments={
             'use_sim_time': use_sim_time,
@@ -69,7 +43,7 @@ def generate_launch_description():
         }.items()
     )
 
-    # 2. SLAM: async slam_toolbox builds /map from /scan + odom
+    # 2. SLAM
     slam_toolbox = Node(
         package='slam_toolbox',
         executable='async_slam_toolbox_node',
@@ -81,14 +55,9 @@ def generate_launch_description():
     # slam_toolbox is a lifecycle node — configure+activate directly.
     # Do NOT use nav2_lifecycle_manager: slam_toolbox inherits plain
     # rclcpp_lifecycle::LifecycleNode (no BondServer), so the manager's bond
-    # client can never connect and always logs "unable to be reached by bond
-    # ... Aborting bringup" no matter the bond_timeout. Wait for the node's
-    # lifecycle service, then transition.
-    #
-    # Robustness: the node can register late under startup load (Gazebo+Nav2
-    # starting simultaneously), so wait on EACH transition succeeding rather
-    # than a single get-then-set race. 120 x 1s per transition == 2 min cap,
-    # comfortably inside the assistant's 120s wait_for_map window.
+    # client can never connect. Wait on EACH transition succeeding (120x1s
+    # each) — a single-shot get-then-set races a late-registering node under
+    # startup load and wedges the mission forever.
     slam_activate = ExecuteProcess(
         cmd=['bash', '-c',
              'for i in $(seq 1 120); do '
@@ -100,9 +69,7 @@ def generate_launch_description():
         output='screen',
     )
 
-    # 3. Nav2 manual stack (slam mode). cmd_vel chain (verified live):
-    #    controller_server -> /cmd_vel_nav -> velocity_smoother
-    #    -> /cmd_vel_smoothed -> collision_monitor -> /cmd_vel -> gz bridge
+    # 3. Nav2 manual stack
     controller = Node(
         package='nav2_controller', executable='controller_server',
         name='controller_server', output='screen',
@@ -156,7 +123,7 @@ def generate_launch_description():
         }],
     )
 
-    # 4. The cleaning supervisor: coverage + battery + docking
+    # 4. House cleaner assistant
     assistant = Node(
         package='house_cleaner_bringup',
         executable='house_cleaner_assistant',
@@ -172,8 +139,7 @@ def generate_launch_description():
         }],
     )
 
-    # 5. Foxglove Bridge for web-based visualization
-    # Connect via: http://localhost:8765 or ws://localhost:8765
+    # 5. Foxglove Bridge
     foxglove_bridge = Node(
         package='foxglove_bridge',
         executable='foxglove_bridge',
@@ -192,9 +158,6 @@ def generate_launch_description():
         'use_sim_time', default_value='true',
         description='Use Gazebo /clock (must be true with Gazebo)'))
     ld.add_action(DeclareLaunchArgument(
-        'headless', default_value='false',
-        description='Run without Gazebo GUI (server only)'))
-    ld.add_action(DeclareLaunchArgument(
         'battery_drain_rate', default_value='0.20',
         description='Battery drain %/s while driving'))
     ld.add_action(DeclareLaunchArgument(
@@ -206,13 +169,11 @@ def generate_launch_description():
     ld.add_action(DeclareLaunchArgument(
         'battery_charge_target', default_value='95.0',
         description='Battery % at which cleaning resumes'))
-    # Mission parameters for closer wall/furniture navigation
     ld.add_action(DeclareLaunchArgument(
         'mission_strip_width', default_value='0.35',
-        description='Boustrophedon lane spacing (m) — smaller = tighter coverage near obstacles'))
+        description='Boustrophedon lane spacing (m)'))
 
     ld.add_action(gazebo_sim)
-    ld.add_action(gazebo_sim_gui)
     ld.add_action(slam_toolbox)
     ld.add_action(slam_activate)
     ld.add_action(controller)

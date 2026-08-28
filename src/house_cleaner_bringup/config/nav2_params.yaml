@@ -127,6 +127,9 @@ collision_monitor:
     robot_max_radius: 0.18
     velocity_columns: 1
     velocity_modes: "stop"
+    # Empty polygons list - collision_monitor requires this parameter
+    # to be defined even if no polygon zones are configured
+    polygons: []
     lidar:
       data_type: "LaserScan"
       topic_name: "scan"

@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
 # =============================================================================
-# gazebo_house_cleaning.launch.py
+# gazebo_house_cleaning_headless.launch.py
 # =============================================================================
-# Launches Gazebo Harmonic with the house room world.
-#
-# Usage:
-#   ros2 launch house_cleaner_bringup gazebo_house_cleaning.launch.py
-#   ros2 launch house_cleaner_bringup gazebo_house_cleaning.launch.py headless:=true
+# Headless version of gazebo_house_cleaning.launch.py - no GUI client.
 # =============================================================================
 
 import os
@@ -16,7 +12,6 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.actions import IncludeLaunchDescription
 from launch.actions import SetEnvironmentVariable
-from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch.substitutions import PathJoinSubstitution
@@ -29,31 +24,18 @@ def generate_launch_description():
     BRINGUP = get_package_share_directory('house_cleaner_bringup')
 
     use_sim_time = LaunchConfiguration('use_sim_time', default='true')
-    headless = LaunchConfiguration('headless', default='false')
     world = LaunchConfiguration('world', default='house_room.world')
     x_pose = LaunchConfiguration('x_pose', default='0.0')
     y_pose = LaunchConfiguration('y_pose', default='0.0')
 
     world_path = PathJoinSubstitution([BRINGUP, 'worlds', world])
 
-    # Gazebo server (always runs, with -s flag for server-only)
+    # Gazebo server only (no GUI client)
     gzserver_cmd = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(ros_gz_sim, 'launch', 'gz_sim.launch.py')
         ),
         launch_arguments={'gz_args': ['-r -s -v2 ', world_path], 'on_exit_shutdown': 'true'}.items()
-    )
-
-    # Gazebo GUI client - only launch when headless is NOT true
-    # Use a direct equality check: "false" means GUI should run
-    # IfCondition takes a boolean expression - we pass it the negation
-    gzclient_cmd = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(ros_gz_sim, 'launch', 'gz_sim.launch.py')
-        ),
-        launch_arguments={'gz_args': '-g -v2 ', 'on_exit_shutdown': 'true'}.items(),
-        # Only run if headless is "false"
-        condition=IfCondition(LaunchConfiguration('headless', default='false'))
     )
 
     # URDF -> TF
@@ -104,9 +86,6 @@ def generate_launch_description():
         'use_sim_time', default_value='true',
         description='Use Gazebo /clock for all nodes (must be true with Gazebo)'))
     ld.add_action(DeclareLaunchArgument(
-        'headless', default_value='false',
-        description='Run without Gazebo GUI (server only)'))
-    ld.add_action(DeclareLaunchArgument(
         'world', default_value='house_room.world',
         description='World file under house_cleaner_bringup/worlds'))
     ld.add_action(DeclareLaunchArgument(
@@ -120,6 +99,5 @@ def generate_launch_description():
     ld.add_action(robot_state_publisher_cmd)
     ld.add_action(spawn_turtlebot_cmd)
     ld.add_action(bridge_cmd)
-    ld.add_action(gzclient_cmd)
 
     return ld

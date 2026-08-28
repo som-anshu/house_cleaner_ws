@@ -17,7 +17,9 @@ setup(
         ]),
         ('share/house_cleaner_bringup/launch', [
             'launch/house_cleaning_auto.launch.py',
+            'launch/house_cleaning_headless.launch.py',
             'launch/gazebo_house_cleaning.launch.py',
+            'launch/gazebo_house_cleaning_headless.launch.py',
             'launch/foxglove_bridge.launch.py',
             'launch/rviz2.launch.py',
             'launch/teleop.launch.py',

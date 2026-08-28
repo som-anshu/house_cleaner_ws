@@ -54,12 +54,10 @@ if [ "$1" = "--headless" ]; then
         -e TURTLEBOT3_MODEL=burger \
         -e ROS_DOMAIN_ID=30 \
         -v /dev/shm:/dev/shm \
-        -v "$DIR:/workspace" \
         -p 8765:8765 \
         house_cleaner:jazzy --headless
 else
     echo "Running with GUI..."
-    # Set up X11 (may fail on Docker Desktop - that's OK)
     xhost +local:docker 2>/dev/null || true
     
     docker run -d --rm --name house_cleaner_jazzy \
@@ -68,7 +66,7 @@ else
         -e LIBGL_ALWAYS_SOFTWARE=1 \
         -e MESA_GL_VERSION_OVERRIDE=3.3 \
         -v /dev/shm:/dev/shm \
-        -v "$DIR:/workspace" \
+        -v "$DIR:/workspace:ro" \
         -p 8765:8765 \
         house_cleaner:jazzy
 fi
