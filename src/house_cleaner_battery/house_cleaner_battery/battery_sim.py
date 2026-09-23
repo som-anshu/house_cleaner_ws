@@ -16,7 +16,7 @@ voltage curve.
 ROS2 parameters (all namespaced under ``battery.``):
   ``drain_rate``        - %/s while driving (default 0.20)
   ``charge_rate``       - %/s while docked (default 0.80)
-  ``low_threshold``     - % at which the supervisor returns to dock (35.0)
+  ``low_threshold``     - % at which the supervisor returns to dock (40.0)
   ``charge_target``     - % at which the supervisor resumes cleaning (95.0)
   ``voltage_full``      - V at 100 % (12.6)
   ``voltage_empty``     - V at 0 % (10.0)
@@ -48,7 +48,7 @@ class BatterySim(Node):
 
         self.declare_parameter("drain_rate", 0.20)
         self.declare_parameter("charge_rate", 0.80)
-        self.declare_parameter("low_threshold", 35.0)
+        self.declare_parameter("low_threshold", 40.0)
         self.declare_parameter("charge_target", 95.0)
         self.declare_parameter("voltage_full", 12.6)
         self.declare_parameter("voltage_empty", 10.0)
@@ -69,6 +69,7 @@ class BatterySim(Node):
         self.seated = False
         self.speed = 0.0
         self.charge_cmd = DockCommand.CMD_STOP
+        self.empty_latched = False
 
         # Publishers / subscribers
         self.battery_pub = self.create_publisher(BatteryState, "/battery_state", 10)
@@ -163,8 +164,22 @@ class BatterySim(Node):
         charge = self.get_parameter("charge_rate").value
         if self.seated and self.charging and self.battery_pct < 100.0:
             self.battery_pct = min(100.0, self.battery_pct + charge * dt)
+            if self.battery_pct > 0.5 and self.empty_latched:
+                self.empty_latched = False
+                self.get_logger().info("Battery recovered from empty latch")
         elif not self.docked and self.speed > self.speed_threshold:
             self.battery_pct = max(0.0, self.battery_pct - drain * dt)
+
+        # Hard empty event: latch once so supervisors/watchdogs can treat
+        # 0 % as a fault, not a soft clamp that keeps looking "fine".
+        if self.battery_pct <= 0.0 and not self.docked and not self.empty_latched:
+            self.empty_latched = True
+            self.get_logger().error(
+                "BATTERY EMPTY (0%) — latched; mission should halt or dock"
+            )
+            # Stop any charge command so state is unambiguous.
+            self.charging = False
+            self.charge_cmd = DockCommand.CMD_STOP
 
         msg = BatteryState()
         msg.header.stamp = self.get_clock().now().to_msg()
@@ -187,6 +202,9 @@ class BatterySim(Node):
                     else BatteryState.POWER_SUPPLY_STATUS_NOT_CHARGING
                 )
             )
+        elif self.empty_latched:
+            # Dead / unknown residual — not a healthy "discharging" pack.
+            msg.power_supply_status = BatteryState.POWER_SUPPLY_STATUS_UNKNOWN
         else:
             msg.power_supply_status = BatteryState.POWER_SUPPLY_STATUS_DISCHARGING
         self.battery_pub.publish(msg)

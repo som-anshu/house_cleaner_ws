@@ -8,18 +8,47 @@ LOG=/tmp/opencode/gui_loop_watchdog.log
 mkdir -p /tmp/opencode
 
 # Wildcard Xauth for TCP-forwarded X11 clients (AGENTS.md recipe).
-XAUTH_SRC="${XAUTHORITY:-/run/user/1000/.mutter-Xwaylandauth.1Z2BW3}"
-if [ ! -f "$XAUTH_SRC" ]; then
-  XAUTH_SRC="$(ls -t /run/user/1000/.mutter-Xwaylandauth.* 2>/dev/null | head -1 || true)"
+# Never trust XAUTHORITY if it points at our own (possibly empty) output
+# cookie — watchdog restarts used to export XAUTHORITY=/tmp/xauth_docker
+# and then failed to rebuild it (nlist on an empty file → 0-byte cookie).
+XAUTH_SRC=""
+if [ -n "${XAUTHORITY:-}" ] && [ -f "$XAUTHORITY" ] && [ "$XAUTHORITY" != "/tmp/xauth_docker" ] \
+   && [ -s "$XAUTHORITY" ]; then
+  XAUTH_SRC="$XAUTHORITY"
 fi
-if [ -z "${XAUTH_SRC:-}" ] || [ ! -f "$XAUTH_SRC" ]; then
-  echo "ERROR: no Xauthority source found (need mutter Xwayland cookie)"
+if [ -z "$XAUTH_SRC" ]; then
+  for cand in /run/user/1000/.mutter-Xwaylandauth.* "$HOME/.Xauthority"; do
+    # shellcheck disable=SC2086
+    if [ -f $cand ] && [ -s $cand ]; then XAUTH_SRC=$cand; break; fi
+  done
+fi
+# Prefer mutter cookie over anything else when present.
+if [ -s /run/user/1000/.mutter-Xwaylandauth.1Z2BW3 ]; then
+  XAUTH_SRC=/run/user/1000/.mutter-Xwaylandauth.1Z2BW3
+else
+  M=$(ls -t /run/user/1000/.mutter-Xwaylandauth.* 2>/dev/null | head -1 || true)
+  if [ -n "$M" ] && [ -s "$M" ]; then XAUTH_SRC="$M"; fi
+fi
+if [ -z "${XAUTH_SRC:-}" ] || [ ! -s "$XAUTH_SRC" ]; then
+  echo "ERROR: no non-empty Xauthority source found (need mutter Xwayland cookie)"
   exit 1
 fi
 rm -f /tmp/xauth_docker
 touch /tmp/xauth_docker
-xauth -f "$XAUTH_SRC" nlist :0 2>/dev/null | sed -e 's/^..../ffff/' | xauth -f /tmp/xauth_docker nmerge - || true
+# nlist writes to stdout; feed via file to avoid stdin-empty race under pipefail.
+xauth -f "$XAUTH_SRC" nlist :0 2>/dev/null > /tmp/opencode/xauth_nlist.txt || true
+if [ ! -s /tmp/opencode/xauth_nlist.txt ]; then
+  xauth -f "$XAUTH_SRC" nlist 2>/dev/null > /tmp/opencode/xauth_nlist.txt || true
+fi
+if [ -s /tmp/opencode/xauth_nlist.txt ]; then
+  sed -e 's/^..../ffff/' /tmp/opencode/xauth_nlist.txt > /tmp/opencode/xauth_nlist_ff.txt
+  xauth -f /tmp/xauth_docker nmerge - < /tmp/opencode/xauth_nlist_ff.txt || true
+fi
 chmod 644 /tmp/xauth_docker
+if [ ! -s /tmp/xauth_docker ]; then
+  echo "ERROR: failed to build wildcard xauth cookie from $XAUTH_SRC"
+  exit 1
+fi
 echo "xauth cookie ready from $XAUTH_SRC ($(wc -c </tmp/xauth_docker) bytes)"
 
 # Ensure socat X11 forward is up (run_docker also does this).
@@ -44,39 +73,31 @@ if [ -f /tmp/opencode/set_drain.sh ]; then
   docker cp /tmp/opencode/set_drain.sh "$NAME:/tmp/set_drain.sh" || true
   docker exec "$NAME" chmod +x /tmp/set_drain.sh || true
 fi
-if [ -f /tmp/opencode/diag_stuck.py ]; then
-  docker cp /tmp/opencode/diag_stuck.py "$NAME:/tmp/diag_stuck.py" || true
-fi
+# Prefer repo scripts (versioned); fall back to /tmp/opencode copies.
+for helper in diag_stuck.py cancel_nav.py; do
+  if [ -f "$DIR/scripts/$helper" ]; then
+    docker cp "$DIR/scripts/$helper" "$NAME:/tmp/$helper" || true
+    cp "$DIR/scripts/$helper" "/tmp/opencode/$helper" 2>/dev/null || true
+  elif [ -f "/tmp/opencode/$helper" ]; then
+    docker cp "/tmp/opencode/$helper" "$NAME:/tmp/$helper" || true
+  fi
+done
 
-# Stall watchdog: no new mission log line for 180s while running → dump diag.
-nohup bash -c "
-  LAST=''
-  LAST_TS=\$(date +%s)
-  while true; do
-    sleep 15
-    if ! docker ps --format '{{.Names}}' | grep -qx '$NAME'; then
-      echo \"\$(date -Is) CONTAINER_DOWN — restarting via run_docker.sh\" | tee -a '$LOG'
-      XAUTHORITY=/tmp/xauth_docker '$DIR/run_docker.sh' \
-        --launch house_cleaner_bringup house_cleaning.launch.py \
-        mode:=sim headless:=false use_sim_time:=true gui:=true mission_loop:=true \
-        >>'$LOG' 2>&1 || true
-      docker cp /tmp/opencode/ros_exec.sh '$NAME:/tmp/ros_exec.sh' 2>/dev/null || true
-      LAST=''; LAST_TS=\$(date +%s)
-      continue
-    fi
-    LINE=\$(docker logs --since 5m '$NAME' 2>&1 | grep -E 'mission_supervisor|COVERAGE|MISSION|CHARG|DOCK|goal |LOW BATTERY|loop' | tail -1 || true)
-    if [ -n \"\$LINE\" ] && [ \"\$LINE\" != \"\$LAST\" ]; then
-      LAST=\"\$LINE\"; LAST_TS=\$(date +%s); continue
-    fi
-    NOW=\$(date +%s)
-    if [ \$((NOW - LAST_TS)) -ge 180 ]; then
-      echo \"\$(date -Is) STALL \$((NOW-LAST_TS))s last='\$LINE'\" | tee -a '$LOG'
-      docker exec '$NAME' python3 /tmp/diag_stuck.py >>'$LOG' 2>&1 || true
-      docker logs --tail 80 '$NAME' >>'$LOG' 2>&1 || true
-      LAST_TS=\$NOW
+# Single recover-capable watchdog (also handles container-down restart).
+if [ -f "$DIR/watchdog.sh" ]; then
+  cp "$DIR/watchdog.sh" /tmp/opencode/watchdog.sh
+  chmod +x /tmp/opencode/watchdog.sh "$DIR/watchdog.sh"
+  # Stop prior watchdogs (repo path, /tmp copy, and old embedded bash -c).
+  for pid in $(pgrep -f 'watchdog\.sh|gui_loop_watchdog|LAST_TS=' 2>/dev/null || true); do
+    if [ "$pid" != "$$" ] && [ "$pid" != "${BASHPID:-}" ]; then
+      kill "$pid" 2>/dev/null || true
     fi
   done
-" >/tmp/opencode/gui_loop_watchdog.out 2>&1 &
-echo "Watchdog PID $!  log=$LOG"
+  sleep 1
+  nohup bash "$DIR/watchdog.sh" >>/tmp/opencode/watchdog.out 2>&1 &
+  echo "Watchdog PID $!  log=/tmp/opencode/watchdog.log"
+else
+  echo "WARNING: watchdog.sh missing — no stall recovery"
+fi
 echo "Foxglove: http://localhost:8765"
 echo "Stop: docker stop $NAME"

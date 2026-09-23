@@ -25,6 +25,14 @@ root causes and the session ledger. Keep it updated as you work.
 - Do NOT try docker-exec one-liners with quotes/% — they break; use script files.
 - Live battery acceleration: `ros2 param set /battery drain_rate 4.0`
   (restore `0.20` later). Re-read every 0.2 s tick.
+- Stall recovery: `watchdog.sh` (repo root) — on log-silence, repeated
+  RETURNING TIMEOUT / BATTERY EMPTY / VEL_CHAIN_STALL, or `/cmd_vel` dead
+  while `/cmd_vel_nav` live: `scripts/cancel_nav.py` + lifecycle bounce of
+  `velocity_smoother`/`collision_monitor`, then full `run_gui_loop.sh` after
+  2 soft failures. Helpers copied into the container by `run_gui_loop.sh`.
+- Mission knobs: `battery.low_threshold` default **40%**, `battery.critical`
+  **1%** (hard abort), `mission.return_budget` **180 s** (RETURNING nav wall
+  budget). Launch: `battery_low_threshold`, `mission_return_budget`.
 - Config + src edits are bind-mounted → NO rebuild, just relaunch.
 - Validate Python edits: `python3 -m py_compile <file>`, and relink if needed
   (`ls -la /workspace/install/.../lib/...`). Code is symlinked via

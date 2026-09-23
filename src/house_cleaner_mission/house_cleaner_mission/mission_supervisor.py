@@ -34,6 +34,7 @@ Key differences vs. the original monolith:
 
 import math
 import sys
+import time
 
 import rclpy
 from rclpy.node import Node
@@ -41,7 +42,7 @@ from rclpy.duration import Duration
 from rclpy.action import ActionClient
 from rclpy.qos import QoSProfile, QoSDurabilityPolicy, ReliabilityPolicy
 
-from geometry_msgs.msg import Point, Pose, PoseStamped, Quaternion
+from geometry_msgs.msg import Point, Pose, PoseStamped, Quaternion, Twist
 from std_msgs.msg import Bool, Header
 from sensor_msgs.msg import BatteryState, LaserScan
 from nav_msgs.msg import Odometry, OccupancyGrid
@@ -100,21 +101,34 @@ class MissionSupervisor(Node):
         super().__init__("mission_supervisor")
 
         # ---- mission / battery / dock parameters
-        self.declare_parameter("battery.low_threshold", 35.0)
+        # low_threshold raised 35→40 so RETURNING starts earlier under load.
+        self.declare_parameter("battery.low_threshold", 40.0)
+        self.declare_parameter("battery.critical", 1.0)
         self.declare_parameter("battery.charge_target", 95.0)
         self.declare_parameter("mission.strip_width", 0.45)
         self.declare_parameter("mission.max_goals", 0)
         self.declare_parameter("mission.loop", False)
+        # Wall-clock budget for the whole RETURNING nav phase (approach +
+        # retries + dock-pose attempts).  Without this, five sequential 90 s
+        # goals can burn ~460 s while the battery sits at 0 %.
+        self.declare_parameter("mission.return_budget", 180.0)
+        # /cmd_vel must be silent this long (with nav live + robot still)
+        # before VEL_STALL fires.  2 s was too tight under host load ~16
+        # (multi-second blips cancelled healthy goals — Sep 24 pass 2).
+        self.declare_parameter("mission.stall_hold", 8.0)
         self.declare_parameter("dock.x", 0.0)
         self.declare_parameter("dock.y", 2.75)
         self.declare_parameter("dock.yaw", math.pi / 2.0)
         self.declare_parameter("dock.approach_back", 0.88)
 
         self.low_threshold = self.get_parameter("battery.low_threshold").value
+        self.battery_critical = self.get_parameter("battery.critical").value
         self.charge_target = self.get_parameter("battery.charge_target").value
         self.strip = self.get_parameter("mission.strip_width").value
         self.max_goals = int(self.get_parameter("mission.max_goals").value)
         self.loop = bool(self.get_parameter("mission.loop").value)
+        self.return_budget = float(self.get_parameter("mission.return_budget").value)
+        self.stall_hold = float(self.get_parameter("mission.stall_hold").value)
         self.dock = (
             self.get_parameter("dock.x").value,
             self.get_parameter("dock.y").value,
@@ -132,6 +146,12 @@ class MissionSupervisor(Node):
         self.goal_idx = 0
         self.state = "INIT"
         self.low_battery_fired = False
+        self.battery_empty_fired = False
+        self.vel_stall_fired = False
+        self.return_deadline = None  # monotonic; set for RETURNING nav phase
+        self.last_cmd_nav_rx = None  # monotonic last /cmd_vel_nav
+        self.last_cmd_out_rx = None  # monotonic last /cmd_vel
+        self.cmd_nav_speed = 0.0
         self.last_grid = None
         self.last_costmap = None
 
@@ -141,6 +161,9 @@ class MissionSupervisor(Node):
         self.create_subscription(Odometry, "/odom", self._odom_cb, 10)
         self.create_subscription(LaserScan, "/scan", self._scan_cb, 10)
         self.create_subscription(BatteryState, "/battery_state", self._battery_cb, 10)
+        # Velocity-chain liveness: controller side vs final output.
+        self.create_subscription(Twist, "/cmd_vel_nav", self._cmd_nav_cb, 10)
+        self.create_subscription(Twist, "/cmd_vel", self._cmd_out_cb, 10)
         # TRANSIENT_LOCAL matches docking_controller's latched /dock/seated.
         self.create_subscription(
             Bool,
@@ -177,8 +200,9 @@ class MissionSupervisor(Node):
 
         self.get_logger().info(
             f"Mission supervisor ready: strip={self.strip:.2f} m "
-            f"low={self.low_threshold:.0f}% target={self.charge_target:.0f}% "
-            f"loop={self.loop} "
+            f"low={self.low_threshold:.0f}% critical={self.battery_critical:.1f}% "
+            f"target={self.charge_target:.0f}% "
+            f"loop={self.loop} return_budget={self.return_budget:.0f}s "
             f"dock=({self.dock[0]:.2f}, {self.dock[1]:.2f}, "
             f"yaw={math.degrees(self.dock[2]):.0f}deg)"
         )
@@ -187,6 +211,13 @@ class MissionSupervisor(Node):
     def _odom_cb(self, msg):
         v = msg.twist.twist.linear
         self.speed = math.hypot(v.x, v.y)
+
+    def _cmd_nav_cb(self, msg):
+        self.last_cmd_nav_rx = time.monotonic()
+        self.cmd_nav_speed = math.hypot(msg.linear.x, msg.linear.y)
+
+    def _cmd_out_cb(self, msg):
+        self.last_cmd_out_rx = time.monotonic()
 
     def _scan_cb(self, msg):
         self.last_scan = msg
@@ -209,6 +240,55 @@ class MissionSupervisor(Node):
     def _costmap_cb(self, msg):
         self.last_costmap = msg
 
+    def _battery_empty(self):
+        return (
+            self.battery_pct <= self.battery_critical
+            and not self.dock_seated
+        )
+
+    def _vel_chain_stalled(self):
+        """True when controller is commanding but final /cmd_vel is silent.
+
+        Detects the Sep 23 case: /cmd_vel_nav live with v>0 while
+        collision_monitor/smoother never publishes /cmd_vel (host starvation
+        or a dead monitor) and the robot stays put.
+
+        ``mission.stall_hold`` (default 8 s) gates the /cmd_vel age so
+        multi-second blips under host load do not cancel healthy goals.
+        """
+        now = time.monotonic()
+        if self.last_cmd_nav_rx is None:
+            return False
+        # Controller must have spoken recently and be asking for motion.
+        if now - self.last_cmd_nav_rx > 1.5:
+            return False
+        if self.cmd_nav_speed < 0.02:
+            return False
+        out_age = (
+            1e9
+            if self.last_cmd_out_rx is None
+            else now - self.last_cmd_out_rx
+        )
+        # Final cmd silent long enough while nav wants motion and robot is
+        # not moving.
+        return out_age > self.stall_hold and self.speed < 0.02
+
+    def _return_budget_exceeded(self):
+        return (
+            self.return_deadline is not None
+            and time.monotonic() > self.return_deadline
+        )
+
+    def _nav_abort_reason(self):
+        """Non-None → cancel the in-flight NavigateToPose immediately."""
+        if self._battery_empty():
+            return "BATTERY_EMPTY"
+        if self._return_budget_exceeded():
+            return "RETURN_BUDGET"
+        if self._vel_chain_stalled():
+            return "VEL_STALL"
+        return None
+
     def _watchdog_cb(self):
         # While cleaning, if battery drops below threshold: cancel the
         # in-flight goal so the mission loop can return to dock.
@@ -223,6 +303,46 @@ class MissionSupervisor(Node):
             self.get_logger().warn(
                 f"LOW BATTERY ({self.battery_pct:.1f}%) — cancelling goal, "
                 "returning to dock"
+            )
+            self.goal_handle.cancel_goal_async()
+
+        # Battery empty (any non-charging state): hard-cancel — do not keep
+        # burning 90 s nav timeouts at 0 %.
+        if (
+            self._battery_empty()
+            and not self.battery_empty_fired
+            and self.goal_handle is not None
+            and self.state not in ("CHARGING", "DONE", "INIT")
+        ):
+            self.battery_empty_fired = True
+            self.get_logger().error(
+                f"BATTERY EMPTY ({self.battery_pct:.1f}%) — cancelling goal, "
+                "aborting nav this cycle"
+            )
+            self.goal_handle.cancel_goal_async()
+
+        # Velocity chain dead while a goal is active.
+        if (
+            self.goal_handle is not None
+            and not self.vel_stall_fired
+            and self._vel_chain_stalled()
+        ):
+            self.vel_stall_fired = True
+            self.get_logger().error(
+                "VEL_CHAIN_STALL — /cmd_vel_nav live but /cmd_vel silent; "
+                "cancelling goal"
+            )
+            self.goal_handle.cancel_goal_async()
+
+        # RETURNING wall-clock budget: cancel so _recharge_cycle stops retrying.
+        if (
+            self.goal_handle is not None
+            and self.state == "RETURNING"
+            and self._return_budget_exceeded()
+        ):
+            self.get_logger().error(
+                f"RETURN BUDGET exceeded ({self.return_budget:.0f}s) — "
+                "cancelling goal"
             )
             self.goal_handle.cancel_goal_async()
 
@@ -296,21 +416,45 @@ class MissionSupervisor(Node):
 
     # ------------------------------------------------------------- navigation
     def send_goal(self, x, y, yaw, timeout=None):
-        """Blocking NavigateToPose; returns (status_str, error_code).
+        """Navigate to (x, y, yaw); returns (status_str, error_code).
+
+        Uses a spin_once wait loop (not a single long
+        ``spin_until_future_complete``) so mid-goal abort reasons — battery
+        empty, RETURNING budget, dead velocity chain — are checked every
+        100 ms and the goal is cancelled promptly instead of waiting out a
+        full 90 s timeout.
 
         ``timeout=None`` uses the default (90 s).  The first CLEANING goal
         passes a longer timeout (cold start: map/TF still maturing under
-        host load — goal 1 previously burned the full budget and TIMEOUTd).
+        host load).
         """
         if timeout is None:
             timeout = 120.0 if self.goal_idx == 0 and self.state == "CLEANING" else 90.0
+        # Never start a goal that cannot fit in the remaining return budget.
+        if self.state == "RETURNING" and self.return_deadline is not None:
+            remain = self.return_deadline - time.monotonic()
+            if remain <= 1.0:
+                return ("RETURN_BUDGET", -1)
+            timeout = min(timeout, remain)
+        if self._battery_empty() and self.state != "CHARGING":
+            return ("BATTERY_EMPTY", -1)
+
         goal = NavigateToPose.Goal()
         goal.pose = self._pose_msg(x, y, yaw)
         self.get_logger().info(
             f"[{self.state}] goal ({x:.2f}, {y:.2f}, yaw={math.degrees(yaw):.0f}deg)"
         )
+        self.vel_stall_fired = False
+
         future = self.nav.send_goal_async(goal)
-        rclpy.spin_until_future_complete(self, future, timeout_sec=15.0)
+        accept_deadline = time.monotonic() + 15.0
+        while rclpy.ok() and not future.done() and time.monotonic() < accept_deadline:
+            reason = self._nav_abort_reason()
+            if reason is not None and self.state != "CHARGING":
+                self.get_logger().warn(f"goal accept aborted: {reason}")
+                self._settle_nav(0.5)
+                return (reason, -1)
+            rclpy.spin_once(self, timeout_sec=0.05)
         if not future.done() or future.result() is None:
             self._settle_nav(1.0)
             return ("NO_SERVER", -1)
@@ -319,15 +463,43 @@ class MissionSupervisor(Node):
             self.goal_handle = None
             self._settle_nav(1.0)
             return ("REJECTED", -1)
+
         result_future = self.goal_handle.get_result_async()
-        rclpy.spin_until_future_complete(self, result_future, timeout_sec=timeout)
+        goal_deadline = time.monotonic() + timeout
+        while rclpy.ok() and not result_future.done():
+            reason = self._nav_abort_reason()
+            if reason is not None:
+                self.get_logger().warn(f"cancelling goal: {reason}")
+                self.goal_handle.cancel_goal_async()
+                cancel_wait = time.monotonic() + 5.0
+                while (
+                    rclpy.ok()
+                    and not result_future.done()
+                    and time.monotonic() < cancel_wait
+                ):
+                    rclpy.spin_once(self, timeout_sec=0.05)
+                self.goal_handle = None
+                self._settle_nav(2.0)
+                return (reason, -1)
+            if time.monotonic() >= goal_deadline:
+                self.goal_handle.cancel_goal_async()
+                cancel_wait = time.monotonic() + 5.0
+                while (
+                    rclpy.ok()
+                    and not result_future.done()
+                    and time.monotonic() < cancel_wait
+                ):
+                    rclpy.spin_once(self, timeout_sec=0.05)
+                self.goal_handle = None
+                self._settle_nav(2.0)
+                return ("TIMEOUT", -1)
+            rclpy.spin_once(self, timeout_sec=0.05)
+
         if not result_future.done():
-            self.goal_handle.cancel_goal_async()
-            rclpy.spin_until_future_complete(self, result_future, timeout_sec=5.0)
             self.goal_handle = None
-            # Let BT tear down the canceled tree before the next goal.
-            self._settle_nav(2.0)
+            self._settle_nav(1.0)
             return ("TIMEOUT", -1)
+
         status = result_future.result().status
         err = result_future.result().result.error_code
         # action_msgs/GoalStatus: 4=SUCCEEDED 5=CANCELED 6=ABORTED
@@ -496,6 +668,11 @@ class MissionSupervisor(Node):
         while True:
             self.state = "CLEANING"
             rc = self._cleaning_loop()
+            if rc == 3 or self._battery_empty():
+                self.get_logger().error(
+                    "Mission halted (battery empty / return failed)"
+                )
+                return rc if rc else 3
             if not self.loop:
                 return rc
             self.get_logger().info(
@@ -504,6 +681,8 @@ class MissionSupervisor(Node):
             # Reset coverage for a fresh pass; map/goals stay valid.
             self.goal_idx = 0
             self.low_battery_fired = False
+            self.battery_empty_fired = False
+            self.vel_stall_fired = False
             if self.dock_seated:
                 # _recharge_cycle(final_park) left us seated for loop mode.
                 undocked = self.call_undock()
@@ -531,12 +710,25 @@ class MissionSupervisor(Node):
                 and self.state == "CLEANING"
             )
             if need_charge:
+                if self._battery_empty() and not self.dock_seated:
+                    self.get_logger().error(
+                        "Battery empty before recharge — aborting mission"
+                    )
+                    self.state = "DONE"
+                    return 3
                 self._recharge_cycle()
                 self.low_battery_fired = False
                 # Livelock guard: if we could not seat/charge, stop cleaning
                 # instead of immediately re-sending goals that the watchdog
                 # will cancel forever.
                 if self.battery_pct <= self.low_threshold and not self.dock_seated:
+                    if self._battery_empty():
+                        self.get_logger().error(
+                            "Battery empty and not seated after recharge — "
+                            "aborting mission"
+                        )
+                        self.state = "DONE"
+                        return 3
                     self.get_logger().error(
                         "Battery still low and not seated after recharge — "
                         "aborting remaining goals to avoid livelock"
@@ -566,8 +758,38 @@ class MissionSupervisor(Node):
                 f"=== CLEANING goal {self.goal_idx + 1}/{total} ==="
             )
             status, err = self.send_goal(x, y, yaw)
+            if status == "BATTERY_EMPTY":
+                self.get_logger().error(
+                    f"  goal {self.goal_idx + 1}/{total} {status} — "
+                    "aborting remaining coverage"
+                )
+                self.state = "DONE"
+                return 3
             if self.low_battery_fired:
                 continue
+            if status == "VEL_STALL":
+                # Give the chain a moment (watchdog may bounce smoother);
+                # one retry then skip so we cannot spin on a dead /cmd_vel.
+                self.get_logger().error(
+                    f"  goal {self.goal_idx + 1}/{total} VEL_STALL — "
+                    "settling, one retry"
+                )
+                self._settle_nav(3.0)
+                self.vel_stall_fired = False
+                status, err = self.send_goal(x, y, yaw)
+                if status == "BATTERY_EMPTY":
+                    self.state = "DONE"
+                    return 3
+                if self.low_battery_fired:
+                    continue
+                if status != "SUCCEEDED":
+                    self.get_logger().error(
+                        f"  goal {self.goal_idx + 1}/{total} still {status} "
+                        "after VEL_STALL retry — skipping"
+                    )
+                    self.goal_idx += 1
+                    skipped += 1
+                    continue
             # TF_ERROR (102): settle then one extra retry before the normal
             # ABORTED path (map→odom lag under host load — transient).
             if status == "ABORTED" and err == 102:
@@ -579,6 +801,9 @@ class MissionSupervisor(Node):
                 status, err = self.send_goal(x, y, yaw)
                 if self.low_battery_fired:
                     continue
+                if status == "BATTERY_EMPTY":
+                    self.state = "DONE"
+                    return 3
                 if status == "SUCCEEDED":
                     self.get_logger().info(
                         f"  goal {self.goal_idx + 1}/{total} done (TF retry)"
@@ -656,7 +881,9 @@ class MissionSupervisor(Node):
                     )
                     self.goal_idx += 1
                     skipped += 1
-            elif status in ("NO_SERVER", "REJECTED"):
+            elif status in (
+                "NO_SERVER", "REJECTED", "RETURN_BUDGET", "VEL_STALL"
+            ):
                 self.get_logger().error(
                     f"  goal {self.goal_idx + 1}/{total} {status} — skipping"
                 )
@@ -668,6 +895,13 @@ class MissionSupervisor(Node):
                 )
                 self.goal_idx += 1
                 skipped += 1
+
+        if self._battery_empty() and not self.dock_seated:
+            self.get_logger().error(
+                "Coverage loop hit empty battery — not claiming dock return"
+            )
+            self.state = "DONE"
+            return 3
 
         self.get_logger().info(
             f"--- COVERAGE COMPLETE ({total - skipped}/{total} reached) "
@@ -686,6 +920,8 @@ class MissionSupervisor(Node):
         self.get_logger().warn(
             "MISSION COMPLETE — could not seat at dock (battery/map issue?)"
         )
+        if self._battery_empty():
+            return 3
         return 0
 
     def _recharge_cycle(self, final_park=False):
@@ -695,10 +931,17 @@ class MissionSupervisor(Node):
         at the end of the cycle.  Mid-cycle failures must not livelock the
         cleaning loop: if charge/undock fails we still clear the low-battery
         latch and resume, but we log loudly.
+
+        Nav phase is bounded by ``mission.return_budget`` (wall clock) and
+        aborts early when the battery is empty — no more ~460 s retry chains
+        at 0 %.
         """
         self.state = "RETURNING"
+        self.return_deadline = time.monotonic() + self.return_budget
+        self.vel_stall_fired = False
         self.get_logger().info(
-            f"Battery {self.battery_pct:.1f}% — returning to dock"
+            f"Battery {self.battery_pct:.1f}% — returning to dock "
+            f"(budget {self.return_budget:.0f}s)"
         )
         approach = (
             self.dock[0],
@@ -707,28 +950,53 @@ class MissionSupervisor(Node):
         )
         # Settle so BT finishes the last coverage goal before dock planning.
         self._settle_nav(2.0)
-        status, err = self.send_goal(approach[0], approach[1], approach[2])
-        for attempt in range(2):
-            if status == "SUCCEEDED":
-                break
-            self.get_logger().warn(
-                f"Return-to-dock approach {status} (err={err}) — "
-                f"retry {attempt + 1}/2 after settle"
-            )
-            self._settle_nav(3.0)
-            status, err = self.send_goal(approach[0], approach[1], approach[2])
 
-        if status != "SUCCEEDED":
-            self.get_logger().warn(
-                f"Approach still {status} — trying dock pose directly"
+        status, err = ("NOT_STARTED", -1)
+        if self._battery_empty():
+            self.get_logger().error(
+                "Battery empty at start of return — skipping nav attempts"
             )
-            self._settle_nav(2.0)
-            status, err = self.send_goal(self.dock[0], self.dock[1], self.dock[2])
-            if status != "SUCCEEDED":
+        else:
+            status, err = self.send_goal(
+                approach[0], approach[1], approach[2]
+            )
+            for attempt in range(2):
+                if status == "SUCCEEDED":
+                    break
+                if status in ("BATTERY_EMPTY", "RETURN_BUDGET"):
+                    break
+                if self._battery_empty() or self._return_budget_exceeded():
+                    self.get_logger().warn(
+                        f"Stop return retries ({status}) — empty/budget"
+                    )
+                    break
+                self.get_logger().warn(
+                    f"Return-to-dock approach {status} (err={err}) — "
+                    f"retry {attempt + 1}/2 after settle"
+                )
                 self._settle_nav(3.0)
-                status, _ = self.send_goal(
+                status, err = self.send_goal(
+                    approach[0], approach[1], approach[2]
+                )
+
+            if status not in (
+                "SUCCEEDED", "BATTERY_EMPTY", "RETURN_BUDGET"
+            ) and not self._return_budget_exceeded():
+                self.get_logger().warn(
+                    f"Approach still {status} — trying dock pose directly"
+                )
+                self._settle_nav(2.0)
+                status, err = self.send_goal(
                     self.dock[0], self.dock[1], self.dock[2]
                 )
+                if status not in ("SUCCEEDED", "BATTERY_EMPTY",
+                                  "RETURN_BUDGET") and not (
+                    self._return_budget_exceeded()
+                ):
+                    self._settle_nav(3.0)
+                    status, _ = self.send_goal(
+                        self.dock[0], self.dock[1], self.dock[2]
+                    )
 
         dock_ok = False
         if status == "SUCCEEDED":
@@ -747,6 +1015,7 @@ class MissionSupervisor(Node):
         if dock_ok:
             self.dock_cmd_pub.publish(DockCommand(command=DockCommand.CMD_START))
             self.state = "CHARGING"
+            self.battery_empty_fired = False
             self.get_logger().info(
                 f"CHARGING — {self.battery_pct:.1f}% -> {self.charge_target:.0f}%"
             )
@@ -775,6 +1044,8 @@ class MissionSupervisor(Node):
         else:
             self.get_logger().warn("Proceeding without charge this cycle")
 
+        # Clear return budget window; empty/vel flags reset on next phase.
+        self.return_deadline = None
         if final_park:
             self.dock_cmd_pub.publish(DockCommand(command=DockCommand.CMD_STOP))
             if dock_ok:
@@ -796,9 +1067,23 @@ class MissionSupervisor(Node):
             self.get_logger().error(
                 "Final dock failed — NOT parked at dock"
             )
+            if self._battery_empty():
+                return False
             return False
 
         self.dock_cmd_pub.publish(DockCommand(command=DockCommand.CMD_STOP))
+        # Never undock if we never seated — and never resume cleaning on an
+        # empty battery (that is the livelock the Sep 23 run hit).
+        if not dock_ok:
+            self.state = "DONE" if self._battery_empty() else "CLEANING"
+            if self._battery_empty():
+                self.get_logger().error(
+                    "Return failed and battery empty — mission halted"
+                )
+                return False
+            self.get_logger().warn("Resuming cleaning without successful dock.")
+            return True
+
         self.state = "UNDOCKING"
         undocked = self.call_undock()
         if not undocked:

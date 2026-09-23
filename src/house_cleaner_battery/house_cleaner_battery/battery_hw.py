@@ -22,7 +22,7 @@ ROS2 parameters (namespaced under ``battery.``):
   ``fault_topic``       - digital-in topic reporting a dock fault (default
                           /dock/fault, std_msgs/Bool)
   ``charge_rate``       - %/s while docked (default 0.80)
-  ``low_threshold``     - % at which the supervisor returns to dock (35.0)
+  ``low_threshold``     - % at which the supervisor returns to dock (40.0)
   ``charge_target``     - % at which the supervisor resumes cleaning (95.0)
   ``voltage_full``      - V at 100 % (12.6)
   ``voltage_empty``     - V at 0 % (10.0)
@@ -48,7 +48,7 @@ class BatteryHw(Node):
         self.declare_parameter("current_topic", "/dock/current")
         self.declare_parameter("fault_topic", "/dock/fault")
         self.declare_parameter("charge_rate", 0.80)
-        self.declare_parameter("low_threshold", 35.0)
+        self.declare_parameter("low_threshold", 40.0)
         self.declare_parameter("charge_target", 95.0)
         self.declare_parameter("voltage_full", 12.6)
         self.declare_parameter("voltage_empty", 10.0)

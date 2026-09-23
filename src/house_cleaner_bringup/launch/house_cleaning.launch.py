@@ -125,6 +125,10 @@ def generate_launch_description():
         package='nav2_behaviors', executable='behavior_server',
         name='behavior_server', output='screen',
         parameters=[NAV2_PARAMS, {'use_sim_time': use_sim_time}],
+        # Behaviors (spin/backup/drive_on_heading) must go through the same
+        # smoother + collision_monitor chain as controller_server — otherwise
+        # they publish raw /cmd_vel and bypass the safety gate.
+        remappings=[('cmd_vel', 'cmd_vel_nav')],
     )
     bt_navigator = Node(
         package='nav2_bt_navigator', executable='bt_navigator',
@@ -261,6 +265,7 @@ def generate_launch_description():
             'battery.charge_target': target,
             'mission.strip_width': strip,
             'mission.loop': mission_loop,
+            'mission.return_budget': LaunchConfiguration('mission_return_budget'),
             'dock.x': dock_x,
             'dock.y': dock_y,
             'dock.yaw': dock_yaw,
@@ -323,12 +328,15 @@ def _declare_args():
         DeclareLaunchArgument('gui', default_value='true'),
         DeclareLaunchArgument('battery_drain_rate', default_value='0.20'),
         DeclareLaunchArgument('battery_charge_rate', default_value='0.80'),
-        DeclareLaunchArgument('battery_low_threshold', default_value='35.0'),
+        DeclareLaunchArgument('battery_low_threshold', default_value='40.0'),
         DeclareLaunchArgument('battery_charge_target', default_value='95.0'),
         DeclareLaunchArgument('mission_strip_width', default_value='0.45'),
         DeclareLaunchArgument(
             'mission_loop', default_value='false',
             description='true: after final dock, undock and run coverage again'),
+        DeclareLaunchArgument(
+            'mission_return_budget', default_value='180.0',
+            description='Wall-clock seconds for the whole RETURNING nav phase'),
         DeclareLaunchArgument('dock_x', default_value='0.0'),
         DeclareLaunchArgument('dock_y', default_value='2.75'),
         DeclareLaunchArgument('dock_yaw', default_value='1.57079632679'),

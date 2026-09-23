@@ -409,3 +409,29 @@ context loss — treat it as the source of truth for "where are we".
   `default_server_timeout=5000`, `failure_tolerance=2.0`,
   `movement_time_allowance=90.0`. Gazebo+RViz windows up.
   [KNOWN] occasional pure TIMEOUT skips remain (host load / path), not TF.
+- [DONE] **Stuck-case prevention: budget / empty / vel-chain / recover (Sep 24)**:
+  Sep 23 night robot sat still while mission kept logging RETURNING goals —
+  battery hit 0 %, `/cmd_vel_nav` ~18 Hz but `/cmd_vel` silent, host load ~16,
+  watchdog never fired (fresh goal line every 30–90 s).
+  Fixes: `mission.return_budget` (180 s wall) bounds whole RETURNING nav;
+  `battery.critical` (1%) hard-aborts nav/mission when empty (no ~460 s retry
+  chains); velocity-chain liveness (`/cmd_vel_nav` live + `/cmd_vel` stale +
+  speed≈0 → `VEL_CHAIN_STALL` cancel); async `send_goal` spin_once loop checks
+  abort reasons every 100 ms; `battery_sim` empty latch + UNKNOWN status at 0%;
+  `behavior_server` remapped to `cmd_vel_nav` (no safety bypass); low_threshold
+  default 35→40; `watchdog.sh` recover mode (stuck-pattern / empty / vel-chain
+  → cancel_nav + bounce smoother+collision_monitor, then full restart);
+   `scripts/{cancel_nav,diag_stuck}.py` sample full cmd chain. Relaunch
+   `./run_gui_loop.sh` to pick up bind-mounted code.
+- [DONE] **Validate prevention stack + fix VEL_STALL false positives (Sep 24)**:
+  Relaunched with fixes live: ready line `low=40% critical=1.0% return_budget=180s`;
+  `behavior_server` pubs only `/cmd_vel_nav`; coverage → RETURNING (budget 180s)
+  → docked → charged 82→95% → loop undock. First post-fix pass then hit a
+  **VEL_STALL storm** (2 s `/cmd_vel` threshold too tight under host load ~16;
+  probe showed multi-second out gaps + sparse nav → 0/10 reached, return loop
+  of VEL_STALL cancels). Fix: `mission.stall_hold` **8.0 s** gates out_age
+  (param on mission_supervisor); watchdog always runs `probe_reason` (was
+  skipped when every log line differed) and counts plain `VEL_STALL` in
+  STUCK_PATTERN. Relaunch validated: `stall_hold=8.0` live, **0 VEL_STALL in
+  90 s**, goals 1–8/9 completing, single recover-mode watchdog PID.
+  [KNOWN] host load ~16 / RTF ~0.5 still causes occasional TIMEOUT skips.

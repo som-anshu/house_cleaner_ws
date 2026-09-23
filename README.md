@@ -277,7 +277,7 @@ The battery drains while driving and charges while docked.
 |-----------|---------|-------------|
 | `battery.drain_rate` | 0.20 %/s | Drain while driving |
 | `battery.charge_rate` | 0.80 %/s | Charge while docked |
-| `battery.low_threshold` | 35.0 % | Return to dock at this level |
+| `battery.low_threshold` | 40.0 % | Return to dock at this level |
 | `battery.charge_target` | 95.0 % | Resume cleaning after charging |
 
 **Customize:**
@@ -285,7 +285,8 @@ The battery drains while driving and charges while docked.
 ros2 launch house_cleaner_bringup house_cleaning.launch.py mode:=sim \
   battery_drain_rate:=0.3 \
   battery_charge_rate:=1.0 \
-  battery_low_threshold:=40.0
+  battery_low_threshold:=45.0 \
+  mission_return_budget:=180.0
 ```
 
 ### Docking Process
