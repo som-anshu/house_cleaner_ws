@@ -45,8 +45,16 @@ soft_recover() {
   echo "$(date -Is) RECOVER reason=$reason soft=$SOFT" | tee -a "$LOG"
   copy_helpers
   docker logs --tail 80 "$NAME" >>"$LOG" 2>&1 || true
-  docker exec "$NAME" python3 /tmp/diag_stuck.py 6 >>"$LOG" 2>&1 || true
-  docker exec "$NAME" python3 /tmp/cancel_nav.py >>"$LOG" 2>&1 || true
+  docker exec "$NAME" bash -lc '
+    . /opt/ros/jazzy/setup.bash >/dev/null 2>&1
+    . /workspace/install/setup.bash >/dev/null 2>&1
+    python3 /tmp/diag_stuck.py 6
+  ' >>"$LOG" 2>&1 || true
+  docker exec "$NAME" bash -lc '
+    . /opt/ros/jazzy/setup.bash >/dev/null 2>&1
+    . /workspace/install/setup.bash >/dev/null 2>&1
+    python3 /tmp/cancel_nav.py
+  ' >>"$LOG" 2>&1 || true
   # Bounce the tail of the velocity chain (common starvation / dead monitor).
   docker exec "$NAME" bash -lc '
     source /opt/ros/jazzy/setup.bash
