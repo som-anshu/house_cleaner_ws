@@ -1,174 +1,427 @@
-controller_server:
+amcl:
   ros__parameters:
-    controller_frequency: 20.0
-    costmap_update_timeout: 0.30
-    min_x_velocity_threshold: 0.001
-    min_y_velocity_threshold: 0.001
-    min_theta_velocity_threshold: 0.001
-    failure_tolerance: 0.3
-    progress_checker_plugins: ["progress_checker"]
-    goal_checker_plugins: ["general_goal_checker"]
-    controller_plugins: ["FollowPath"]
-    use_realtime_priority: false
-
-    # Progress checker parameters
-    progress_checker:
-      plugin: "nav2_controller::SimpleProgressChecker"
-      required_movement_radius: 0.05
-      movement_time_allowance: 30.0
-    # Goal checker parameters
-    general_goal_checker:
-      stateful: True
-      plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.25
-      yaw_goal_tolerance: 0.25
-    FollowPath:
-      plugin: "nav2_mppi_controller::MPPIController"
-      time_steps: 56
-      model_dt: 0.05
-      batch_size: 1000
-      ax_max: 3.0
-      ax_min: -3.0
-      ay_max: 3.0
-      ay_min: -3.0
-      az_max: 3.5
-      vx_std: 0.2
-      vy_std: 0.2
-      wz_std: 0.4
-      vx_max: 0.5
-      vx_min: -0.35
-      vy_max: 0.5
-      wz_max: 1.9
-      iteration_count: 1
-      prune_distance: 1.7
-      transform_tolerance: 0.1
-      temperature: 0.3
-      gamma: 0.015
-      motion_model: "DiffDrive"
-      DiffDrive:
-        plugin: "mppi::DiffDriveMotionModel"
-      visualize: false
-      regenerate_noises: false
-      TrajectoryVisualizer:
-        trajectory_step: 5
-        time_step: 3
-      AckermannConstraints:
-        min_turning_r: 0.2
-      # Rollout batches for MPPI (reduced for container stability)
-      rollout_batch_size: 4
-      number_fn_value: 1280
-      # Collision checking handled by CostCritic above
-      critics: [
-        "ConstraintCritic", "CostCritic", "GoalCritic",
-        "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic",
-        "PathAngleCritic", "PreferForwardCritic"]
-      ConstraintCritic:
-        enabled: true
-        cost_power: 1
-        cost_weight: 4.0
-      GoalCritic:
-        enabled: true
-        cost_power: 1
-        cost_weight: 5.0
-        threshold_to_consider: 1.4
-      GoalAngleCritic:
-        enabled: true
-        cost_power: 1
-        cost_weight: 3.0
-        threshold_to_consider: 0.5
-      PreferForwardCritic:
-        enabled: true
-        cost_power: 1
-        cost_weight: 5.0
-        threshold_to_consider: 0.5
-      CostCritic:
-        enabled: true
-        cost_power: 1
-        cost_weight: 3.81
-        near_collision_cost: 253
-        critical_cost: 300.0
-        consider_footprint: false
-        collision_cost: 1000000.0
-        near_goal_distance: 1.0
-        trajectory_point_step: 2
-      PathAlignCritic:
-        enabled: true
-        cost_power: 1
-        cost_weight: 14.0
-        max_path_occupancy_ratio: 0.05
-        trajectory_point_step: 4
-        threshold_to_consider: 0.5
-        offset_from_furthest: 20
-        use_path_orientations: false
-      PathFollowCritic:
-        enabled: true
-        cost_power: 1
-        cost_weight: 5.0
-        offset_from_furthest: 5
-        threshold_to_consider: 1.4
-      PathAngleCritic:
-        enabled: true
-        cost_power: 1
-        cost_weight: 2.0
-        offset_from_furthest: 4
-        threshold_to_consider: 0.5
-        max_angle_to_furthest: 1.0
-        mode: 0
-      # TwirlingCritic:
-      #   enabled: true
-      #   twirling_cost_power: 1
-      #   twirling_cost_weight: 10.0
-
-collision_monitor:
-  ros__parameters:
+    alpha1: 0.2
+    alpha2: 0.2
+    alpha3: 0.2
+    alpha4: 0.2
+    alpha5: 0.2
+    base_frame_id: base_footprint
+    beam_skip_distance: 0.5
+    beam_skip_error_threshold: 0.9
+    beam_skip_threshold: 0.3
+    do_beamskip: false
+    global_frame_id: map
+    initial_pose:
+      x: 0.0
+      y: 0.0
+      yaw: 0.0
+    lambda_short: 0.1
+    laser_likelihood_max_dist: 2.0
+    laser_max_range: 3.5
+    laser_min_range: 0.12
+    laser_model_type: likelihood_field
+    max_beams: 60
+    max_particles: 2000
+    min_particles: 500
+    odom_frame_id: odom
+    pf_err: 0.05
+    pf_z: 0.99
+    recovery_alpha_fast: 0.0
+    recovery_alpha_slow: 0.0
+    resample_interval: 1
+    robot_max_vel_theta: 2.5
+    robot_max_vel_trans: 0.65
+    robot_model_type: differential
+    save_pose_rate: 0.5
+    set_initial_pose: true
+    sigma_hit: 0.2
+    tf_broadcast: true
+    transform_tolerance: 1.0
+    update_min_a: 0.2
+    update_min_d: 0.25
     use_sim_time: true
-    observation_sources: ['lidar']
-    robot_min_radius: 0.15
-    robot_max_radius: 0.18
-    velocity_columns: 1
-    velocity_modes: "stop"
-    # Empty polygons list - collision_monitor requires this parameter
-    # to be defined even if no polygon zones are configured
-    polygons: []
-    lidar:
-      data_type: "LaserScan"
-      topic_name: "scan"
-      stop_threshold: 0.0
-      slowdown_threshold: 0.2
-
-planner_server:
-  ros__parameters:
-    use_sim_time: true
-
+    z_hit: 0.5
+    z_max: 0.05
+    z_rand: 0.5
+    z_short: 0.05
 behavior_server:
   ros__parameters:
+    backup:
+      plugin: nav2_behaviors::BackUp
+    behavior_plugins:
+    - spin
+    - backup
+    - drive_on_heading
+    - wait
+    cycle_frequency: 10.0
+    drive_on_heading:
+      plugin: nav2_behaviors::DriveOnHeading
+    global_costmap_topic: global_costmap/costmap_raw
+    global_footprint_topic: global_costmap/published_footprint
+    global_frame: odom
+    local_costmap_topic: local_costmap/costmap_raw
+    local_footprint_topic: local_costmap/published_footprint
+    robot_base_frame: base_footprint
+    spin:
+      plugin: nav2_behaviors::Spin
     use_sim_time: true
-
-waypoint_follower:
+    wait:
+      plugin: nav2_behaviors::Wait
+bt_navigator:
   ros__parameters:
+    default_bt_xml_filename: navigate_to_pose_w_replanning_and_recovery.xml
+    # Default is 20 **milliseconds** — under host load the planner/controller
+    # action servers miss the ack window, BT aborts NavigateToPose with
+    # "Timed out while waiting for action server to acknowledge", and the
+    # mission sees instant ABORTED (dock cascade + err=102 path).
+    default_server_timeout: 5000
+    global_frame: map
+    odom_topic: odom
+    robot_base_frame: base_footprint
     use_sim_time: true
-
-velocity_smoother:
+collision_monitor:
   ros__parameters:
+    PolygonSlow:
+      action_type: limit
+      min_points: 4
+      points: '[[0.35, 0.15], [0.35, -0.15], [0.12, -0.15], [0.12, 0.15]]'
+      speed_limit_pct: 45.0
+      type: polygon
+      visualize: false
+    PolygonStop:
+      action_type: stop
+      min_points: 4
+      points: '[[0.15, 0.105], [0.15, -0.105], [0.03, -0.105], [0.03, 0.105]]'
+      type: polygon
+      visualize: false
+    base_frame_id: base_footprint
+    base_shift_correction: true
+    cmd_vel_in_topic: /cmd_vel_smoothed
+    cmd_vel_out_topic: /cmd_vel
+    enable_stamped_cmd_vel: false
+    enabled: true
+    observation_sources:
+    - scan
+    odom_frame_id: odom
+    polygons:
+    - PolygonSlow
+    - PolygonStop
+    scan:
+      min_points: 4
+      topic: /scan
+      type: scan
+    source_timeout: 1.0
+    state_topic: /collision_monitor_state
+    stop_pub_timeout: 2.0
+    transform_tolerance: 0.5
     use_sim_time: true
-    smoothing_frequency: 20.0
-    scale: 1.0
-    # Simple velocity smoothing: blend between raw and smoothed
-    # velocity so that the collision_monitor sees stable commands.
-    # No footprint/frequency filtering needed.
-    odom_topic: "odom"
-    cmd_vel_timeout: 0.5
-
+controller_server:
+  ros__parameters:
+    FollowPath:
+      AckermannConstraints:
+        min_turning_r: 0.2
+      ConstraintCritic:
+        cost_power: 1
+        cost_weight: 4.0
+        enabled: true
+      CostCritic:
+        collision_cost: 1000000.0
+        # false: costmaps only define robot_radius (no polygon footprint);
+        # true makes MPPI configure fail with "no robot footprint provided".
+        consider_footprint: false
+        cost_power: 1
+        cost_weight: 3.5
+        critical_cost: 300.0
+        enabled: true
+        near_collision_cost: 253
+        near_goal_distance: 1.2
+        trajectory_point_step: 2
+      DiffDrive:
+        plugin: mppi::DiffDriveMotionModel
+      GoalAngleCritic:
+        cost_power: 1
+        cost_weight: 3.0
+        enabled: true
+        threshold_to_consider: 0.5
+      GoalCritic:
+        cost_power: 1
+        cost_weight: 5.0
+        enabled: true
+        threshold_to_consider: 1.4
+      PathAlignCritic:
+        cost_power: 1
+        cost_weight: 14.0
+        enabled: true
+        max_path_occupancy_ratio: 0.25
+        offset_from_furthest: 20
+        threshold_to_consider: 0.5
+        trajectory_point_step: 4
+        use_path_orientations: false
+      PathAngleCritic:
+        cost_power: 1
+        cost_weight: 2.0
+        enabled: true
+        max_angle_to_furthest: 1.0
+        mode: 0
+        offset_from_furthest: 4
+        threshold_to_consider: 0.5
+      PathFollowCritic:
+        cost_power: 1
+        cost_weight: 7.0
+        enabled: true
+        offset_from_furthest: 5
+        threshold_to_consider: 1.4
+      PreferForwardCritic:
+        cost_power: 1
+        # 0 = free reverse — needed to back out of furniture corners.
+        cost_weight: 0.0
+        enabled: true
+        threshold_to_consider: 0.5
+      TrajectoryVisualizer:
+        time_step: 3
+        trajectory_step: 5
+      ax_max: 4.0
+      ax_min: -4.0
+      ay_max: 3.0
+      ay_min: -3.0
+      az_max: 5.0
+      batch_size: 600
+      critics:
+      - ConstraintCritic
+      - CostCritic
+      - GoalCritic
+      - GoalAngleCritic
+      - PathAlignCritic
+      - PathFollowCritic
+      - PathAngleCritic
+      - PreferForwardCritic
+      gamma: 0.015
+      iteration_count: 1
+      model_dt: 0.05
+      motion_model: DiffDrive
+      number_fn_value: 1280
+      plugin: nav2_mppi_controller::MPPIController
+      prune_distance: 1.7
+      regenerate_noises: false
+      rollout_batch_size: 4
+      temperature: 0.5
+      time_steps: 56
+      # 0.1s could not cover map→odom lag under load (goal stamp was ahead
+      # of the latest TF → "Unable to transform goal pose" / err=102).
+      transform_tolerance: 0.5
+      visualize: false
+      vx_max: 0.65
+      vx_min: -0.4
+      vx_std: 0.35
+      vy_max: 0.5
+      vy_std: 0.2
+      wz_max: 2.5
+      wz_std: 0.7
+    controller_frequency: 20.0
+    controller_plugins:
+    - FollowPath
+    costmap_update_timeout: 0.3
+    # 0.3s was too tight under load: one slow costmap/TF tick aborted the
+    # whole FollowPath.  2.0s lets transient stalls recover before abort.
+    failure_tolerance: 2.0
+    general_goal_checker:
+      plugin: nav2_controller::SimpleGoalChecker
+      stateful: false
+      xy_goal_tolerance: 0.20
+      yaw_goal_tolerance: 0.22
+    goal_checker_plugins:
+    - general_goal_checker
+    min_theta_velocity_threshold: 0.001
+    min_x_velocity_threshold: 0.001
+    min_y_velocity_threshold: 0.001
+    progress_checker:
+      # Under host load the robot crawls (control loop 11–18 Hz vs 20 Hz).
+      # 8 cm / 55 s fired "Failed to make progress" on near-dock cells (g8).
+      movement_time_allowance: 90.0
+      plugin: nav2_controller::SimpleProgressChecker
+      required_movement_radius: 0.05
+    progress_checker_plugins:
+    - progress_checker
+    robot_radius: 0.105
+    use_realtime_priority: false
+    use_sim_time: true
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      global_frame: map
+      inflation_layer:
+        cost_scaling_factor: 2.5
+        enabled: true
+        inflate_unknown: false
+        inflation_radius: 0.30
+        plugin: nav2_costmap_2d::InflationLayer
+      obstacle_layer:
+        combination_method: 1
+        enabled: true
+        footprint_clearing_enabled: true
+        max_obstacle_height: 2.0
+        min_obstacle_height: 0.0
+        observation_sources: scan
+        plugin: nav2_costmap_2d::ObstacleLayer
+        scan:
+          clearing: true
+          data_type: LaserScan
+          marking: true
+          obstacle_max_range: 2.5
+          raytrace_max_range: 3.0
+          sensor_frame: base_scan
+          topic: /scan
+      plugins:
+      - static_layer
+      - obstacle_layer
+      - inflation_layer
+      publish_frequency: 1.0
+      robot_base_frame: base_footprint
+      robot_radius: 0.105
+      static_layer:
+        enabled: true
+        map_subscribe_transient_local: true
+        plugin: nav2_costmap_2d::StaticLayer
+      track_unknown_space: true
+      transform_tolerance: 0.5
+      update_frequency: 1.0
+      use_sim_time: true
 lifecycle_manager_navigation:
   ros__parameters:
-    use_sim_time: true
-    autostart: True
-    # Longer autostart_delay gives collision_monitor time to init
-    autostart_delay: 15.0
-    bond_timeout: 5.0
+    autostart: true
+    autostart_delay: 12.0
     bond_rejection_threshold: 5
-    node_names: [
-      "controller_server", "smoother_server", "planner_server",
-      "behavior_server", "bt_navigator", "waypoint_follower",
-      "velocity_smoother", "collision_monitor",
-    ]
+    bond_timeout: 5.0
+    node_names:
+    - controller_server
+    - smoother_server
+    - planner_server
+    - behavior_server
+    - bt_navigator
+    - waypoint_follower
+    - velocity_smoother
+    - collision_monitor
+    use_sim_time: true
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      global_frame: odom
+      height: 4
+      inflation_layer:
+        cost_scaling_factor: 2.5
+        enabled: true
+        inflate_unknown: false
+        inflation_radius: 0.30
+        plugin: nav2_costmap_2d::InflationLayer
+      obstacle_layer:
+        combination_method: 1
+        enabled: true
+        footprint_clearing_enabled: true
+        max_obstacle_height: 2.0
+        min_obstacle_height: 0.0
+        observation_sources: scan
+        plugin: nav2_costmap_2d::ObstacleLayer
+        scan:
+          clearing: true
+          data_type: LaserScan
+          marking: true
+          obstacle_max_range: 2.5
+          raytrace_max_range: 3.0
+          sensor_frame: base_scan
+          topic: /scan
+      plugins:
+      - obstacle_layer
+      - inflation_layer
+      publish_frequency: 2.0
+      resolution: 0.05
+      robot_base_frame: base_footprint
+      robot_radius: 0.105
+      rolling_window: true
+      # Local costmap must NOT track unknown: with track_unknown_space true the
+      # rolling window stays ~97% -1, MPPI CostCritic treats that as blocked,
+      # the robot never moves, and raytrace never fills free space (death
+      # spiral — seen as goal-1 TIMEOUT + spin "Collision Ahead"). Unknown
+      # becomes FREE (0) so only laser marks are obstacles.
+      track_unknown_space: false
+      transform_tolerance: 0.5
+      update_frequency: 5.0
+      use_sim_time: true
+      width: 4
+map_server:
+  ros__parameters:
+    use_sim_time: true
+planner_server:
+  ros__parameters:
+    GridBased:
+      # true: early SLAM still has large unknown free space; false made Navfn
+      # fail ("Failed to create plan with tolerance") on valid goals (g4).
+      # Furniture-through-path risk is mitigated by PreferForward=0,
+      # CostCritic 3.5, laser-marked costmap, and mission keep-out filter.
+      allow_unknown: true
+      plugin: nav2_navfn_planner::NavfnPlanner
+      tolerance: 0.25
+      use_astar: false
+    planner_plugins:
+    - GridBased
+    robot_radius: 0.105
+    use_sim_time: true
+smoother_server:
+  ros__parameters:
+    double_precision: true
+    max_waypoint_distance: 0.05
+    simple_smoother:
+      do_refinement: true
+      max_its: 1000
+      plugin: nav2_smoother::SimpleSmoother
+      tolerance: 1.0e-10
+    smoother_frequency: 20.0
+    smoother_plugins:
+    - simple_smoother
+    use_sim_time: true
+velocity_smoother:
+  ros__parameters:
+    cmd_vel_timeout: 0.5
+    enable_stamped_cmd_vel: false
+    feedback: OPEN_LOOP
+    max_accel:
+    - 1.5
+    - 0.0
+    - 3.0
+    max_decel:
+    - -2.0
+    - 0.0
+    - -3.5
+    max_jerk:
+    - 3.0
+    - 0.0
+    - 5.0
+    max_velocity:
+    - 0.65
+    - 0.0
+    - 2.5
+    min_accel:
+    - 0.0
+    - 0.0
+    - 0.0
+    min_jerk:
+    - 0.0
+    - 0.0
+    - 0.0
+    min_velocity:
+    - -0.4
+    - 0.0
+    - -2.5
+    odom_topic: odom
+    scale: 1.0
+    smoothing_frequency: 20.0
+    use_sim_time: true
+waypoint_follower:
+  ros__parameters:
+    loop_rate: 20
+    stop_on_failure: false
+    use_sim_time: true
+    wait_at_waypoint:
+      enabled: true
+      plugin: nav2_waypoint_follower::WaitAtWaypoint
+      waypoint_pause_duration: 50
+    waypoint_task_executor_plugin: wait_at_waypoint

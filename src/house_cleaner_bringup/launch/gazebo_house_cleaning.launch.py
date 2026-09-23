@@ -2,7 +2,9 @@
 # =============================================================================
 # gazebo_house_cleaning.launch.py
 # =============================================================================
-# Launches Gazebo Harmonic with the house room world.
+# Launches Gazebo Harmonic with the house room world and the TurtleBot3
+# Burger (URDF TF, spawn, gz-ROS bridge).  The Gazebo GUI client is launched
+# UNLESS ``headless:=true``.
 #
 # Usage:
 #   ros2 launch house_cleaner_bringup gazebo_house_cleaning.launch.py
@@ -17,6 +19,7 @@ from launch.actions import DeclareLaunchArgument
 from launch.actions import IncludeLaunchDescription
 from launch.actions import SetEnvironmentVariable
 from launch.conditions import IfCondition
+from launch.conditions import UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch.substitutions import PathJoinSubstitution
@@ -36,24 +39,30 @@ def generate_launch_description():
 
     world_path = PathJoinSubstitution([BRINGUP, 'worlds', world])
 
-    # Gazebo server (always runs, with -s flag for server-only)
+    # Gazebo: server-only (-s) when headless; otherwise launch server + GUI
+    # *in the same process* (no separate -g client).  A detached `gz sim -g`
+    # client does not attach to the -s server (different transport/RESOURCE
+    # URI), leaving the world stalled with 0 iterations on /world/.../clock.
+    # Running a single `gz sim -r` instance gives both server and GUI window.
     gzserver_cmd = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(ros_gz_sim, 'launch', 'gz_sim.launch.py')
         ),
-        launch_arguments={'gz_args': ['-r -s -v2 ', world_path], 'on_exit_shutdown': 'true'}.items()
+        launch_arguments={
+            'gz_args': ['-r -v2 ', world_path],
+            'on_exit_shutdown': 'true',
+        }.items(),
+        condition=UnlessCondition(LaunchConfiguration('headless', default='false')),
     )
-
-    # Gazebo GUI client - only launch when headless is NOT true
-    # Use a direct equality check: "false" means GUI should run
-    # IfCondition takes a boolean expression - we pass it the negation
-    gzclient_cmd = IncludeLaunchDescription(
+    gzheadless_cmd = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(ros_gz_sim, 'launch', 'gz_sim.launch.py')
         ),
-        launch_arguments={'gz_args': '-g -v2 ', 'on_exit_shutdown': 'true'}.items(),
-        # Only run if headless is "false"
-        condition=IfCondition(LaunchConfiguration('headless', default='false'))
+        launch_arguments={
+            'gz_args': ['-r -s -v2 ', world_path],
+            'on_exit_shutdown': 'true',
+        }.items(),
+        condition=IfCondition(LaunchConfiguration('headless', default='false')),
     )
 
     # URDF -> TF
@@ -61,7 +70,7 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(
             os.path.join(tbg, 'launch', 'robot_state_publisher.launch.py')
         ),
-        launch_arguments={'use_sim_time': use_sim_time}.items()
+        launch_arguments={'use_sim_time': use_sim_time}.items(),
     )
 
     # Spawn burger
@@ -78,7 +87,7 @@ def generate_launch_description():
         output='screen',
     )
 
-    # Bridge
+    # gz <-> ROS bridge (clock, tf, odom, scan, imu, cmd_vel)
     bridge_cmd = Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',
@@ -90,6 +99,7 @@ def generate_launch_description():
         output='screen',
     )
 
+    # Resource paths so Gazebo can find the burger and custom dock models.
     set_env_resources = SetEnvironmentVariable(
         'GZ_SIM_RESOURCE_PATH',
         os.path.join(tbg, 'models')
@@ -98,11 +108,17 @@ def generate_launch_description():
         'GZ_SIM_SYSTEM_RESOURCE_PATH',
         os.path.join(tbg, 'models')
     )
+    # Software-rendering fallback (llvmpipe) — set externally if needed;
+    # default OFF so a real GPU is used when available.
+    set_env_libgl = SetEnvironmentVariable(
+        'LIBGL_ALWAYS_SOFTWARE',
+        LaunchConfiguration('libgl_software', default='0')
+    )
 
     ld = LaunchDescription()
     ld.add_action(DeclareLaunchArgument(
         'use_sim_time', default_value='true',
-        description='Use Gazebo /clock for all nodes (must be true with Gazebo)'))
+        description='Use Gazebo /clock for all nodes'))
     ld.add_action(DeclareLaunchArgument(
         'headless', default_value='false',
         description='Run without Gazebo GUI (server only)'))
@@ -113,13 +129,17 @@ def generate_launch_description():
         'x_pose', default_value='0.0', description='Spawn x (m)'))
     ld.add_action(DeclareLaunchArgument(
         'y_pose', default_value='0.0', description='Spawn y (m)'))
+    ld.add_action(DeclareLaunchArgument(
+        'libgl_software', default_value='1',
+        description='Force Mesa llvmpipe software rendering (1, default)'))
 
     ld.add_action(set_env_resources)
     ld.add_action(set_env_model)
+    ld.add_action(set_env_libgl)
     ld.add_action(gzserver_cmd)
+    ld.add_action(gzheadless_cmd)
     ld.add_action(robot_state_publisher_cmd)
     ld.add_action(spawn_turtlebot_cmd)
     ld.add_action(bridge_cmd)
-    ld.add_action(gzclient_cmd)
 
     return ld

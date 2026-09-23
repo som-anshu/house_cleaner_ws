@@ -50,7 +50,7 @@ The robot maps an unknown room with SLAM, plans a full-coverage cleaning path, a
 
 **Prerequisites:**
 - Docker installed ([Install Docker](https://docs.docker.com/get-docker/))
-- X11 server running (for GUI)
+- A Linux desktop session (X11 or Wayland) for the GUI — auto-detected
 
 **Steps:**
 
@@ -58,9 +58,6 @@ The robot maps an unknown room with SLAM, plans a full-coverage cleaning path, a
 # Clone the repository
 git clone git@github.com:som-anshu/house_cleaner_ws.git
 cd house_cleaner_ws
-
-# Set up X11 access (required for GUI)
-xhost +local:docker
 
 # Run the simulation (builds automatically on first run)
 ./run_docker.sh
@@ -72,6 +69,11 @@ xhost +local:docker
 - SLAM building a map from laser scans
 - Nav2 navigating autonomously
 - Foxglove Bridge accessible at http://localhost:8765
+
+`run_docker.sh` auto-detects your GUI backend (X11 or Wayland), forwards the
+display socket + xauth cookie (no `xhost +` needed), passes through `/dev/dri`
+when present for GPU rendering, and falls back to software rendering
+(llvmpipe) otherwise.  No VNC is required.
 
 ### Option 2: Native Install
 
@@ -97,15 +99,18 @@ docker build -t house_cleaner:jazzy .
 # GUI mode (default)
 ./run_docker.sh
 
-# Headless mode (no GUI, server only)
+# Headless mode (no GUI, server only — Foxglove still available)
 ./run_docker.sh --headless
+
+# Interactive shell inside the container
+./run_docker.sh --shell
 
 # Custom launch file
 docker run -it --rm \
   -e DISPLAY=$DISPLAY \
   -v /tmp/.X11-unix:/tmp/.X11-unix \
   house_cleaner:jazzy \
-  --launch=house_cleaner_bringup/house_cleaning_auto.launch.py
+  --launch house_cleaner_bringup gazebo_house_cleaning.launch.py
 ```
 
 ### Docker Commands
@@ -174,8 +179,11 @@ source env.sh
 ### Run the Simulation
 
 ```bash
-# Terminal 1: Launch the full simulation
-ros2 launch house_cleaner_bringup house_cleaning_auto.launch.py
+# Terminal 1: Launch the full simulation (GUI)
+ros2 launch house_cleaner_bringup house_cleaning.launch.py mode:=sim
+
+# Server-only Gazebo (no GUI)
+ros2 launch house_cleaner_bringup house_cleaning.launch.py mode:=sim headless:=true
 
 # Terminal 2: Battery monitor (optional)
 python3 src/house_cleaner_bringup/scripts/battery_monitor.py
@@ -183,6 +191,9 @@ python3 src/house_cleaner_bringup/scripts/battery_monitor.py
 # Terminal 3: Teleop control (optional)
 ros2 launch house_cleaner_bringup teleop.launch.py
 ```
+
+The single `house_cleaning.launch.py` drives both sim and real hardware
+(`mode:=sim|real`); see [Real Robot Deployment](#real-robot-deployment).
 
 ---
 
@@ -271,7 +282,7 @@ The battery drains while driving and charges while docked.
 
 **Customize:**
 ```bash
-ros2 launch house_cleaner_bringup house_cleaning_auto.launch.py \
+ros2 launch house_cleaner_bringup house_cleaning.launch.py mode:=sim \
   battery_drain_rate:=0.3 \
   battery_charge_rate:=1.0 \
   battery_low_threshold:=40.0
@@ -279,9 +290,11 @@ ros2 launch house_cleaner_bringup house_cleaning_auto.launch.py \
 
 ### Docking Process
 
-1. **Low battery detected** — Current goal cancelled
+1. **Low battery detected** — Current goal cancelled (watchdog timer)
 2. **Return to dock** — Navigate to approach pose (0.0, 1.87)
-3. **Laser-guided creep** — Slow forward until front laser reads < 0.13m
+3. **Laser-guided creep** — `docking_controller` creeps via the Nav2 velocity
+   chain (`/cmd_vel_nav` -> velocity_smoother -> collision_monitor);
+   the front polygon stop or stall/flat-window latch seats the robot
 4. **Charging** — Battery recharges to target level
 5. **Undocking** — Back out 0.48m, resume cleaning
 
@@ -320,26 +333,31 @@ CLEANING -> (battery low) -> RETURNING -> DOCKING -> CHARGING -> UNDOCKING -> RE
 
 ```
 house_cleaner_ws/
-├── Dockerfile                    # Docker image definition
-├── docker-compose.yml           # Docker Compose configuration
-├── run_docker.sh                # Docker launcher script
-├── entrypoint.sh                # Docker container entrypoint
-├── env.sh                       # ROS2 environment setup
-├── README.md                    # This file
-├── LICENSE                      # MIT License
+├── Dockerfile                    # Docker image definition (ROS2 Jazzy + Gazebo Harmonic)
+├── docker-compose.yml            # Docker Compose configuration (X11/Wayland GUI)
+├── run_docker.sh                 # Docker launcher (auto X11/Wayland detection)
+├── entrypoint.sh                 # Docker container entrypoint
+├── env.sh                        # ROS2 environment setup (native)
+├── README.md                     # This file
+├── LICENSE                       # MIT License
 └── src/
-    └── house_cleaner_bringup/
-        ├── CMakeLists.txt       # Build configuration
-        ├── package.xml          # Package dependencies
-        ├── setup.py             # Python package setup
+    ├── house_cleaner_msgs/       # Shared interfaces (DockCommand, DockState, CreepToDock)
+    ├── house_cleaner_core/       # Pure-Python coverage/geometry helpers (no ROS)
+    ├── house_cleaner_battery/    # battery_sim + battery_hw backends (same contract)
+    ├── house_cleaner_docking/    # Laser-guided docking controller + /undock
+    ├── house_cleaner_mission/    # Mission supervisor (coverage + battery + dock orchestration)
+    ├── house_cleaner_description/# (reserved) custom burger/dock URDF
+    └── house_cleaner_bringup/    # Launch files + config + worlds + models + scripts
+        ├── CMakeLists.txt        # Install launch/config/worlds/models/scripts
+        ├── package.xml           # Package dependencies
         ├── config/
-        │   ├── nav2_params.yaml           # Nav2 parameters
+        │   ├── nav2_params.yaml           # Nav2 + collision_monitor params
         │   ├── slam_toolbox_gazebo_params.yaml  # SLAM parameters
         │   ├── burger_bridge.yaml         # Gazebo-ROS bridge config
-        │   └── foxglove_layout.json       # Foxglove panel layout
+        │   └── house_cleaning.rviz       # RViz2 display config
         ├── launch/
-        │   ├── house_cleaning_auto.launch.py  # Main launch file
-        │   ├── gazebo_house_cleaning.launch.py  # Gazebo only
+        │   ├── house_cleaning.launch.py  # UNIFIED entry point (mode:=sim|real)
+        │   ├── gazebo_house_cleaning.launch.py  # Gazebo world + burger + bridge
         │   ├── foxglove_bridge.launch.py   # Foxglove bridge
         │   ├── rviz2.launch.py            # RViz2 visualization
         │   └── teleop.launch.py           # Teleop control
@@ -347,10 +365,6 @@ house_cleaner_ws/
         │   └── house_room.world           # Gazebo world
         ├── models/
         │   └── wall/                      # Wall model
-        ├── house_cleaner_bringup/
-        │   ├── __init__.py
-        │   ├── house_cleaner_assistant.py # Cleaning supervisor
-        │   └── fake_sim.py               # Lightweight simulator
         └── scripts/
             ├── battery_monitor.py        # Terminal battery display
             └── kill_house_cleaner.sh     # Cleanup script
@@ -364,11 +378,11 @@ house_cleaner_ws/
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `qt.qpa.xcb: could not connect to display` | No X11 forwarding | Run `xhost +local:docker` |
-| `OpenGL 3.3 is not supported` | GPU driver issues | Use `LIBGL_ALWAYS_SOFTWARE=1` (set in run_docker.sh) |
-| `controller_server crashes` | MPPI visualization | Set `visualize: false` in nav2_params.yaml |
+| `qt.qpa.xcb: could not connect to display` | Display socket/xauth not forwarded | Use `./run_docker.sh` (auto X11/Wayland forwarding, no `xhost +`) |
+| `OpenGL 3.3 is not supported` | GPU driver issue in container | `LIBGL_ALWAYS_SOFTWARE=1` is set by default in run_docker.sh |
+| `controller_server crashes` | MPPI visualization | Set `visualize: false` in nav2_params.yaml (already default) |
 | `ros2 command not found` | Environment not sourced | Run `source env.sh` |
-| `Assistant times out on /map` | SLAM slow to initialize | Wait up to 120s for first map |
+| `Supervisor times out on /map` | SLAM slow to initialize | Wait up to 120s for first map |
 | Foxglove won't connect | Port 8765 blocked | Check `docker ps` for port mapping |
 
 ### Debug Commands
@@ -402,24 +416,44 @@ docker exec -it house_cleaner_jazzy bash
 
 ## Real Robot Deployment
 
-> **Note:** Real robot support is planned for a future phase.
+The stack is structured for a real TurtleBot3 Burger out of the box.  The
+same `house_cleaning.launch.py` drives it with `mode:=real` — SLAM / Nav2
+are replaced by map_server + AMCL localization, and the battery backend swaps
+from `battery_sim` to `battery_hw`.
 
-The simulation is designed to be directly transferable to a real TurtleBot3 Burger:
+> **Note:** `mode:=real` expects the TurtleBot3 bringup driver (OpenCR, LDS)
+> to publish `/odom`, `/scan`, `/joint_states`, etc. on the robot, or via the
+> host `turtlebot3_bringup` package (add it to the Dockerfile when you go
+> physical).  Custom dock wiring: see below.
 
-1. **Save the SLAM map:**
+1. **Save the SLAM map from the sim:**
    ```bash
    ros2 run nav2_map_server map_saver_cli -f /tmp/house_map
    ```
 
-2. **Deploy on real robot:**
+2. **Run on hardware (localize on the saved map):**
    ```bash
-   # Copy map to robot
-   scp /tmp/house_map.* robot@turtlebot3:/home/robot/maps/
-
-   # Launch navigation on robot
-   ros2 launch house_cleaner_bringup bringup_real_robot.launch.py \
-     map:=/home/robot/maps/house_map.yaml
+   # Not yet implemented: real-mode substitution of map_server/AMCL and the
+   # TurtleBot3 driver nodes is stubbed in house_cleaning.launch.py (mode:=real).
+   ros2 launch house_cleaner_bringup house_cleaning.launch.py mode:=real
    ```
+
+**Custom dock (hardware) contract** used by `battery_hw` and the mission
+supervisor:
+
+| Topic | Type | Description |
+|-------|------|-------------|
+| `/dock/seated` (in) | std_msgs/Bool | Robot physically seated (also published by docking_controller) |
+| `/dock/current` (in) | std_msgs/Float64 | Analog charge-current input (A) |
+| `/dock/fault` (in) | std_msgs/Bool | Dock fault detection |
+| `/battery_state_opencr` (in) | sensor_msgs/BatteryState | Raw OpenCR/BMS battery stream |
+| `/battery_state` (out) | sensor_msgs/BatteryState | Supervisor-facing battery telemetry |
+| `/dock/state` (out) | house_cleaner_msgs/DockState | seat + charge + fault state machine |
+| `/dock/command` (in) | house_cleaner_msgs/DockCommand | `CMD_START/STOP/FAULT` from supervisor |
+
+Wire these into whatever dock hardware you use (GPIO expander, I2C bridge,
+or the OpenCR); the supervisor only ever reads `/battery_state`, sends
+`/dock/command`, and waits on `/creep_to_dock` + `/undock`.
 
 ---
 

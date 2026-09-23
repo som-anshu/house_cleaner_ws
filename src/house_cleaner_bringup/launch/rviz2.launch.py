@@ -41,7 +41,7 @@ def generate_launch_description():
         executable='rviz2',
         name='rviz2',
         output='screen',
-        arguments=['-d', os.path.join(bringup_dir, 'config', 'nav2_params.yaml')],
+        arguments=['-d', os.path.join(bringup_dir, 'config', 'house_cleaning.rviz')],
         parameters=[{
             'use_sim_time': True,
         }],

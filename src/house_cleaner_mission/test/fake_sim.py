@@ -17,7 +17,7 @@ Features:
   - Real-time laser scan generation
 
 Usage:
-  ros2 launch house_cleaner_bringup fake_sim.launch.py
+  python3 test/fake_sim.py
 
 Parameters:
   room_width       - Room width in meters (default: 4.65)

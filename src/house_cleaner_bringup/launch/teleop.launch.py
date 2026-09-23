@@ -43,9 +43,9 @@ def generate_launch_description():
         parameters=[{
             'use_sim_time': True,
             # Scale for linear velocity (m/s)
-            'scale_linear': 0.5,
+            'scale_linear': 0.65,
             # Scale for angular velocity (rad/s)
-            'scale_angular': 1.0,
+            'scale_angular': 2.0,
         }],
         # Remap to /cmd_vel if needed (default is /cmd_vel)
         remappings=[],

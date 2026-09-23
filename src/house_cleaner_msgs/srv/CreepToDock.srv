@@ -1,0 +1,21 @@
+# CreepToDock.srv
+#
+# Laser-guided final approach into the charging dock.  The mission
+# supervisor calls this AFTER it has navigated to the dock approach pose
+# (the pose ``approach_back`` metres south of the dock centre).  The
+# controller then drives the robot forward at ``creep_speed`` until the
+# front laser reads below ``creep_stop_range`` (robot seated), or until it
+# detects a stall / timeout.
+#
+# The same service is implemented by the simulator and the real dock
+# controller, so the supervisor's docking logic is hardware-agnostic.
+
+# (empty request — all geometry comes from ROS parameters)
+
+---
+# True when the robot ended pressed against the dock (front clearance <
+# creep_stop_range, or a stall / flat-clearance condition fired).
+bool seated
+# Front laser clearance (m) at the moment the service returned; -1 when no
+# scan was available.
+float32 front_clearance_m

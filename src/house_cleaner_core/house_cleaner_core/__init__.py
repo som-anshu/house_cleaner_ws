@@ -1,0 +1,1 @@
+# core geometry + coverage helpers (no ROS2 dependency)

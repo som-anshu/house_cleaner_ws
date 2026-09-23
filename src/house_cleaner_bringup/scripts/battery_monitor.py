@@ -25,7 +25,10 @@ class Monitor(Node):
         self._timer = self.create_timer(1.0, self._tick)
 
     def _battery_cb(self, msg):
+        # 0..1 → percent; -1 / NaN / negative = unknown → keep last reading.
         pct = msg.percentage
+        if pct is None or not isinstance(pct, (int, float)) or pct != pct or pct < 0.0:
+            return
         self.battery_pct = pct * 100.0 if pct <= 1.0 else pct
         self.last_battery_update = self.get_clock().now()
 

@@ -9,7 +9,10 @@ set +e
 
 pkill -f "gz sim" 2>/dev/null
 pkill -f "ros2 launch house_cleaner_bringup" 2>/dev/null
-pkill -f "house_cleaner_assistant" 2>/dev/null
+pkill -f "mission_supervisor" 2>/dev/null
+pkill -f "docking_controller" 2>/dev/null
+pkill -f "battery_sim" 2>/dev/null
+pkill -f "battery_hw" 2>/dev/null
 pkill -f "fake_sim" 2>/dev/null
 pkill -f "async_slam_toolbox_node" 2>/dev/null
 pkill -f "rviz2" 2>/dev/null
