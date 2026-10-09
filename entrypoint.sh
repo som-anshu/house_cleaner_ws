@@ -1,30 +1,48 @@
 #!/usr/bin/env bash
 # =============================================================================
-# entrypoint.sh - Entrypoint for House Cleaner Robot Docker Container
+# entrypoint.sh - Entrypoint for the House Cleaner Robot container
 # =============================================================================
-# Sources the ROS + workspace overlay and launches the unified
+# Sources the ROS distro + workspace overlay and launches
 # house_cleaning.launch.py.
 #
 # Usage:
-#   docker run house_cleaner:jazzy                       # Full stack, GUI
-#   docker run house_cleaner:jazzy --headless            # Gazebo server-only
-#   docker run house_cleaner:jazzy --launch <pkg> <file> # Custom launch file
-#   docker run house_cleaner:jazzy bash                  # Interactive shell
+#   docker run house_cleaner:lyrical                       # Full stack, GUI
+#   docker run house_cleaner:lyrical --headless            # Gazebo server-only
+#   docker run house_cleaner:lyrical --launch <pkg> <file> # Custom launch file
+#   docker run house_cleaner:lyrical bash                  # Interactive shell
+#
+# The distro comes from the image's ROS_DISTRO environment variable, so this
+# file is identical for lyrical, jazzy and humble images.
+#
+# NOTE: `set -u` is deliberately NOT used. setup.bash dereferences some
+# AMENT_TRACE_* variables that are legitimately unset, and with set -u the
+# whole entrypoint aborts before ROS is even sourced.
 # =============================================================================
 
 set -e
 
-# Source ROS2 Jazzy base, then the workspace overlay (order matters: the
-# overlay must win over /opt/ros for our packages to resolve).
-source /opt/ros/jazzy/setup.bash
+# The image sets ROS_DISTRO (see Dockerfile ENV). Fall back to the single
+# installed distro if it is somehow unset.
+if [ -z "${ROS_DISTRO:-}" ]; then
+    ROS_DISTRO="$(set -- /opt/ros/*/setup.bash; [ -f "${1:-}" ] && basename "$(dirname "$1")" || echo "")"
+    if [ -z "$ROS_DISTRO" ]; then
+        echo "ERROR: no ROS distro found under /opt/ros and ROS_DISTRO is unset" >&2
+        exit 2
+    fi
+fi
+echo "ROS distro: ${ROS_DISTRO}"
+
+# Order matters: /opt/ros first, then the workspace overlay, so the overlay's
+# packages resolve ahead of the distro ones.
+source "/opt/ros/${ROS_DISTRO}/setup.bash"
 if [ -f /workspace/install/setup.bash ]; then
     source /workspace/install/setup.bash
 fi
 
-# Parse arguments once.  `--launch PKG FILE...` must consume PKG/FILE from
-# the same stream the for-loop walks — shifting inside the case while the
-# for-loop still visits the original argv used to double-shift and also
-# append PKG into LAUNCH_ARGS (`ros2 launch pkg pkg file`).
+# Parse arguments once. `--launch PKG FILE...` must consume PKG/FILE from the
+# same stream the while-loop walks - shifting inside a case while a for-loop
+# still visited the original argv used to double-shift and also append PKG
+# into LAUNCH_ARGS (`ros2 launch pkg pkg file`).
 ARGS=("$@")
 HEADLESS=false
 CUSTOM_LAUNCH=""
@@ -56,7 +74,7 @@ while [ $i -lt ${#ARGS[@]} ]; do
 done
 
 echo "=== House Cleaner Robot ==="
-echo "ROS2 Jazzy environment loaded"
+echo "ROS 2 ${ROS_DISTRO} environment loaded"
 echo "Robot model: ${TURTLEBOT3_MODEL:-burger}"
 echo "Domain ID: ${ROS_DOMAIN_ID:-30}"
 echo "Headless: $HEADLESS"

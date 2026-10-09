@@ -1,67 +1,90 @@
-# =============================================================================
-# docker-compose.yml - House Cleaner Robot Docker Compose Configuration
-# =============================================================================
-# Runs the house cleaner robot via the same run_docker.sh primitives:
-# X11 + Wayland GUI forwarding, /dev/dri GPU passthrough, software-rendering
-# fallback, and the Foxglove web bridge on :8765.
+# ROS 2 + Gazebo simulation for the house cleaner, with GUI and GPU.
 #
-# Usage:
-#   docker compose up --build        # full stack, GUI
-#   docker compose run --rm house_cleaner --headless
-#   docker compose down
+# The distro is a variable with a sensible default, so this file is identical
+# across machines:
+#   docker compose up -d                       # uses detected/ros-distro.sh value
+#   ROS_DISTRO=jazzy docker compose up -d      # force a specific distro
 #
-# GUI forwarding requires DISPLAY/WAYLAND_DISPLAY AND (for X11) the xauth
-# cookie.  Use run_docker.sh for a fully auto-configured single command;
-# this compose file is the explicit, inspectable equivalent.
-# =============================================================================
+# IMPORTANT: the image name must match the one run_docker.sh builds, because
+# that also passes --build-arg ROS_DISTRO at build time.
+#
+# run_docker.sh is the primary entry point and handles more (Docker Desktop vs
+# native engine, GPU detection, libgl fallback). This compose file exists for
+# people who prefer compose or want to run it as a service.
 
 services:
   house_cleaner:
+    image: house_cleaner:${ROS_DISTRO:-lyrical}
+    container_name: house_cleaner_${ROS_DISTRO:-lyrical}
     build:
       context: .
-      dockerfile: Dockerfile
-    image: house_cleaner:jazzy
-    container_name: house_cleaner_jazzy
-    stdin_open: true
-    tty: true
-
-    # --- GUI Rendering Configuration (X11 + Wayland) ---
-    environment:
-      # X11 forwarding (Gazebo GUI, RViz2)
-      - DISPLAY=${DISPLAY:-:0}
-      - XAUTHORITY=${XAUTHORITY:-/root/.Xauthority}
-      # Wayland forwarding (when host session is Wayland)
-      - WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-}
-      - XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/1000}
-      # Software rendering fallback; set LIBGL_ALWAYS_SOFTWARE=0 to use a GPU
-      - LIBGL_ALWAYS_SOFTWARE=${LIBGL_ALWAYS_SOFTWARE:-1}
-      - MESA_GL_VERSION_OVERRIDE=3.3
-      - QT_X11_NO_MITSHM=1
-      # ROS2 configuration
-      - TURTLEBOT3_MODEL=burger
-      - ROS_DOMAIN_ID=30
-
-    # --- Volume Mounts ---
-    volumes:
-      # X11 socket (required for Gazebo GUI, RViz2)
-      - /tmp/.X11-unix:/tmp/.X11-unix:rw
-      # Wayland socket (required when host session is Wayland)
-      - ${XDG_RUNTIME_DIR:-/run/user/1000}:${XDG_RUNTIME_DIR:-/run/user/1000}:rw
-      # GPU /dev/dri when present on host (otherwise software rendering)
-      - /dev/dri:/dev/dri:rw
-      # Shared memory for Gazebo (prevents crashes)
-      - /dev/shm:/dev/shm
-      # Live source tree (edits reflect immediately via symlink-install)
-      - ./src:/workspace/src:rw
-
-    # --- Network Configuration ---
-    # Foxglove bridge runs on port 8765 for web visualization
-    ports:
-      - "8765:8765"
-
-    # --- Resource Limits ---
-    # Increase shared memory for Gazebo
-    shm_size: '2gb'
-
-    # --- Misc ---
+      args:
+        ROS_DISTRO: ${ROS_DISTRO:-lyrical}
+    network_mode: host          # DDS discovery is multicast; the bridge drops it
+    ipc: host
     restart: unless-stopped
+
+    # GPU. Portable form; works with the Docker CLI plugin.
+    # Needs nvidia-container-toolkit installed on the host:
+    #   sudo apt install -y nvidia-container-toolkit && sudo nvidia-ctk runtime configure --runtime=docker
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+    environment:
+      # GUI - Wayland (the native session type on Ubuntu). Whole runtime dir is
+      # mounted so shared memory, dbus and audio are reachable too.
+      - WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-wayland-0}
+      - XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/1000}
+      - XDG_SESSION_TYPE=wayland
+      - QT_QPA_PLATFORM=wayland
+      - GDK_BACKEND=wayland
+      - SDL_VIDEODRIVER=wayland
+      # X11 fallback, used when the Wayland socket is absent or a Qt/Gtk app
+      # insists on X11. Both are wired; the client picks.
+      - DISPLAY=${DISPLAY:-:0}
+      - QT_X11_NO_MITSHM=1
+
+      # ROS 2. Match the host ROS_DOMAIN_ID or the container and host become
+      # two invisible systems.
+      - ROS_DISTRO=${ROS_DISTRO:-lyrical}
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-30}
+      - TURTLEBOT3_MODEL=${TURTLEBOT3_MODEL:-burger}
+      - RCUTILS_COLORIZED_OUTPUT=1
+      - RCUTILS_LOGGING_USE_STDOUT=1
+
+      # Let NVIDIA tooling know graphics and video are in play.
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      # Software rendering only when there is no GPU. Default 0 - the old
+      # default of 1 forced llvmpipe and was a major cause of low RTF.
+      - LIBGL_ALWAYS_SOFTWARE=${LIBGL_ALWAYS_SOFTWARE:-0}
+
+    volumes:
+      # GUI: Wayland socket + shared memory, and the X11 socket for fallback.
+      - ${XDG_RUNTIME_DIR:-/run/user/1000}:${XDG_RUNTIME_DIR:-/run/user/1000}
+      - /tmp/.X11-unix:/tmp/.X11-unix
+
+      # Workspace. src/ is what matters; build/ install/ log/ regenerate inside
+      # the container. Mounted at the same absolute path so paths in configs
+      # and launch files still resolve.
+      - /home/koko/dev/house_cleaner_ws:/workspace
+
+      # X11 authorisation, only if the host actually has one. Commented out
+      # because the X11 fallback works via `xhost +local:` on the host.
+      # - ${XAUTHORITY:-/dev/null}:/tmp/.Xauthority:ro
+
+    # Serial devices. Uncomment and adjust for your hardware.
+    # The cgroup rule is what makes a pass-through device work unprivileged.
+    # devices:
+    #   - /dev/ttyUSB0
+    #   - /dev/ttyACM0
+    # group_add:
+    #   - dialout
+
+    working_dir: /workspace
+    tty: true
+    stdin_open: true

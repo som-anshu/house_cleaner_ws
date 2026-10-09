@@ -5,16 +5,34 @@
 #  - repeated RETURNING TIMEOUT / battery empty / vel-chain silent
 #                              -> cancel goals + bounce smoother/collision_monitor
 #                              -> full restart if still stuck
+#
+# Portable: workspace root, ROS distro and container name are all derived, not
+# hardcoded, so this file works on any machine and any distro.
+
 set -u
-NAME=house_cleaner_jazzy
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# ros-distro.sh resolves ROS_DISTRO and CONTAINER_NAME. It is safe to source
+# even with `set -u` because it only reads already-set variables.
+# shellcheck disable=SC1091
+. "$DIR/ros-distro.sh"
+
+NAME="$CONTAINER_NAME"
 LOG=/tmp/opencode/watchdog.log
-DIR=/home/koko/house_cleaner_ws
 INTERVAL=15
 STALL=180
 # consecutive recovery failures before full container restart
 MAX_SOFT=2
+
 mkdir -p /tmp/opencode
-echo "$(date -Is) watchdog start (recover mode)" >>"$LOG"
+echo "$(date -Is) watchdog start (recover mode) distro=${ROS_DISTRO} container=${NAME}" >>"$LOG"
+
+# Source the ROS distro and the workspace overlay inside a container. Used in
+# several places, so it lives in one variable. Note: no `set -u` inside -
+# setup.bash dereferences unset AMENT_TRACE_* variables.
+ROS_SRC=". /opt/ros/${ROS_DISTRO}/setup.bash >/dev/null 2>&1
+. /workspace/install/setup.bash >/dev/null 2>&1"
 
 LAST=""
 LAST_TS=$(date +%s)
@@ -33,7 +51,7 @@ copy_helpers() {
 
 restart_gui() {
   echo "$(date -Is) FULL_RESTART via run_gui_loop" | tee -a "$LOG"
-  # Do NOT export XAUTHORITY=/tmp/xauth_docker — that empty/self cookie
+  # Do NOT export XAUTHORITY=/tmp/xauth_docker - that empty/self cookie
   # used to be fed back as the source and produced a 0-byte rebuild.
   env -u XAUTHORITY "$DIR/run_gui_loop.sh" >>"$LOG" 2>&1 || true
   echo "$(date -Is) handed off to run_gui_loop watchdog" | tee -a "$LOG"
@@ -45,33 +63,24 @@ soft_recover() {
   echo "$(date -Is) RECOVER reason=$reason soft=$SOFT" | tee -a "$LOG"
   copy_helpers
   docker logs --tail 80 "$NAME" >>"$LOG" 2>&1 || true
-  docker exec "$NAME" bash -lc '
-    . /opt/ros/jazzy/setup.bash >/dev/null 2>&1
-    . /workspace/install/setup.bash >/dev/null 2>&1
-    python3 /tmp/diag_stuck.py 6
-  ' >>"$LOG" 2>&1 || true
-  docker exec "$NAME" bash -lc '
-    . /opt/ros/jazzy/setup.bash >/dev/null 2>&1
-    . /workspace/install/setup.bash >/dev/null 2>&1
-    python3 /tmp/cancel_nav.py
-  ' >>"$LOG" 2>&1 || true
+  docker exec "$NAME" bash -lc "$ROS_SRC
+    python3 /tmp/diag_stuck.py 6" >>"$LOG" 2>&1 || true
+  docker exec "$NAME" bash -lc "$ROS_SRC
+    python3 /tmp/cancel_nav.py" >>"$LOG" 2>&1 || true
   # Bounce the tail of the velocity chain (common starvation / dead monitor).
-  docker exec "$NAME" bash -lc '
-    source /opt/ros/jazzy/setup.bash
-    source /workspace/install/setup.bash 2>/dev/null || true
+  docker exec "$NAME" bash -lc "$ROS_SRC
     ros2 lifecycle set /velocity_smoother deactivate >/dev/null 2>&1 || true
     sleep 1
     ros2 lifecycle set /velocity_smoother activate >/dev/null 2>&1 || true
     ros2 lifecycle set /collision_monitor deactivate >/dev/null 2>&1 || true
     sleep 1
     ros2 lifecycle set /collision_monitor activate >/dev/null 2>&1 || true
-    echo recovered_chain
-  ' >>"$LOG" 2>&1 || true
+    echo recovered_chain" >>"$LOG" 2>&1 || true
   SOFT=$((SOFT + 1))
   LAST_TS=$(date +%s)
   LAST=""
   if [ "$SOFT" -ge "$MAX_SOFT" ]; then
-    echo "$(date -Is) soft recover failed $SOFT times — full restart" | tee -a "$LOG"
+    echo "$(date -Is) soft recover failed $SOFT times - full restart" | tee -a "$LOG"
     restart_gui
   fi
 }
@@ -97,20 +106,14 @@ probe_reason() {
   fi
   # 3) battery empty while not charging
   local pct seated charge
-  pct=$(docker exec "$NAME" bash -lc '
-    . /opt/ros/jazzy/setup.bash >/dev/null 2>&1
-    . /workspace/install/setup.bash >/dev/null 2>&1
+  pct=$(docker exec "$NAME" bash -lc "$ROS_SRC
     timeout 3 ros2 topic echo /battery_state --once 2>/dev/null \
-      | grep -m1 percentage | grep -oE "[0-9.]+" | head -1
-  ' 2>/dev/null || true)
-  seated=$(docker exec "$NAME" bash -lc '
-    . /opt/ros/jazzy/setup.bash >/dev/null 2>&1
-    . /workspace/install/setup.bash >/dev/null 2>&1
+      | grep -m1 percentage | grep -oE \"[0-9.]+\" | head -1" 2>/dev/null || true)
+  seated=$(docker exec "$NAME" bash -lc "$ROS_SRC
     timeout 3 ros2 topic echo /dock/seated --once 2>/dev/null \
-      | grep -oE "(true|false)" | head -1
-  ' 2>/dev/null || true)
+      | grep -oE \"(true|false)\" | head -1" 2>/dev/null || true)
   if [ -n "${pct:-}" ]; then
-    # empty if percentage field (0..1) is ~0  OR raw 0
+    # empty if percentage field (0..1) is ~0 OR raw 0
     if awk -v p="$pct" 'BEGIN { exit !(p <= 0.01) }'; then
       if [ "${seated:-false}" != "true" ]; then
         echo "BATTERY_EMPTY pct=$pct seated=$seated"
@@ -120,16 +123,10 @@ probe_reason() {
   fi
   # 4) velocity chain: nav live, final silent (quick 2s hz probe)
   local nav_hz out_hz
-  nav_hz=$(docker exec "$NAME" bash -lc '
-    . /opt/ros/jazzy/setup.bash >/dev/null 2>&1
-    . /workspace/install/setup.bash >/dev/null 2>&1
-    timeout 3 ros2 topic hz /cmd_vel_nav 2>/dev/null | head -1 | grep -oE "[0-9.]+" | head -1
-  ' 2>/dev/null || true)
-  out_hz=$(docker exec "$NAME" bash -lc '
-    . /opt/ros/jazzy/setup.bash >/dev/null 2>&1
-    . /workspace/install/setup.bash >/dev/null 2>&1
-    timeout 3 ros2 topic hz /cmd_vel 2>/dev/null | head -1 | grep -oE "[0-9.]+" | head -1
-  ' 2>/dev/null || true)
+  nav_hz=$(docker exec "$NAME" bash -lc "$ROS_SRC
+    timeout 3 ros2 topic hz /cmd_vel_nav 2>/dev/null | head -1 | grep -oE \"[0-9.]+\" | head -1" 2>/dev/null || true)
+  out_hz=$(docker exec "$NAME" bash -lc "$ROS_SRC
+    timeout 3 ros2 topic hz /cmd_vel 2>/dev/null | head -1 | grep -oE \"[0-9.]+\" | head -1" 2>/dev/null || true)
   if [ -n "${nav_hz:-}" ] && awk -v h="$nav_hz" 'BEGIN { exit !(h >= 2) }'; then
     if [ -z "${out_hz:-}" ] || awk -v h="$out_hz" 'BEGIN { exit !(h < 1) }'; then
       echo "VEL_CHAIN nav_hz=$nav_hz out_hz=${out_hz:-0}"
@@ -142,7 +139,7 @@ probe_reason() {
 while true; do
   sleep "$INTERVAL"
   if ! up; then
-    echo "$(date -Is) CONTAINER_DOWN — restarting GUI loop" | tee -a "$LOG"
+    echo "$(date -Is) CONTAINER_DOWN - restarting GUI loop" | tee -a "$LOG"
     restart_gui
   fi
 
@@ -159,7 +156,7 @@ while true; do
     esac
   fi
 
-  # Always probe — a chatty-but-stuck mission (VEL_STALL storm) must not
+  # Always probe - a chatty-but-stuck mission (VEL_STALL storm) must not
   # skip recovery just because each log line differs from the last.
   REASON=$(probe_reason)
   if [ -n "$REASON" ]; then

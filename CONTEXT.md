@@ -6,37 +6,39 @@ context loss — treat it as the source of truth for "where are we".
 
 ## 1. Environment facts (do not re-derive)
 
-- Workspace: `/home/koko/house_cleaner_ws` (git repo).
-- Docker context `desktop-linux`, socket `~/.docker/desktop/docker.sock` (NOT `/var/run/docker.sock`).
-- Daemon recovery: `systemctl --user start docker-desktop` (no sudo). It dies occasionally.
-- Image `house_cleaner:jazzy` (**2d67bf012da9**, ~5.26 GB, rebuilt Sep 23 14:39 UTC —
-  bakes fixed `entrypoint.sh`), container `house_cleaner_jazzy`.
-- **X display: Xwayland `:0` IS present** (sockets `/tmp/.X11-unix/X0`, Wayland
-  `wayland-0`; seen since Sep 23 09:22). Full GUI sim works: `./run_docker.sh`
-  forwards X over socat TCP (`host.docker.internal:0`). GOTCHA: the live cookie
-  (`$XAUTHORITY`, mutter file) holds only a `uwu/unix:` entry, so TCP clients
-  fail with "Authorization required". Fix: build a wildcard cookie once per
-  session — `xauth -f "$XAUTHORITY" nlist :0 | sed -e 's/^..../ffff/' |
-  xauth -f /tmp/xauth_docker nmerge -` — then launch with
-  `XAUTHORITY=/tmp/xauth_docker ./run_docker.sh` (run_docker.sh honors
-  `$XAUTHORITY`). Verified Sep 23: rviz2 on OpenGL 4.5, gazebo up, mission
-  started (24 goals), container stays Up. Headless (`--headless`) remains the
-  CI-like default.
-- Bind-mounted config means source/config edits need NO rebuild:
-  Dockerfile `colcon build --symlink-install` + `run_docker.sh` does
-  `src → /workspace/src:rw`. `entrypoint.sh` is baked → edit host file then
-  `./run_docker.sh --build` (COPY is last layer; `apt-get update` in RUN
-  busts cache so rebuild re-downloads ~600 MB apt — allow ≥20 min).
-- Readiness marker printed by the bash Nav2 bringup: `Nav2 lifecycle bringup complete`.
-  `run_docker.sh` polls for it (90×2 s), dumps `docker logs` on early exit.
+- Workspace: this git repo. **No path is hardcoded anywhere** — every script
+  resolves its own root via `ros-distro.sh`, which also sets `ROS_DISTRO`,
+  `CONTAINER_NAME` (`house_cleaner_<distro>`) and `IMAGE_NAME`.
+- ROS distro is **detected**, not assumed: lyrical on Ubuntu 26.04, jazzy on
+  24.04, humble on 22.04. `source env.sh` gives you a working shell.
+  Override with `export ROS_DISTRO=<name>` before running anything.
+- Docker flavour is detected too: **native Linux engine vs Docker Desktop**.
+  They need completely different display forwarding (see §6). The socat+xauth
+  dance below only applies to Docker Desktop.
+- Daemon recovery on a native engine: `sudo systemctl start docker`.
+  On Docker Desktop: `systemctl --user start docker-desktop`.
+- Image: `house_cleaner:<distro>`, built with
+  `docker build --build-arg ROS_DISTRO=<distro>`. Container:
+  `house_cleaner_<distro>`.
+- `entrypoint.sh` is **baked into the image** — editing the host file needs
+  `./run_docker.sh --build`.
+- **X display: Xwayland `:0` may be present**, with a Wayland `wayland-0`
+  socket alongside it. Prefer Wayland when the socket exists — it needs no
+  authentication setup at all.
+- Bind-mounted config means source/config edits need NO rebuild: the
+  Dockerfile uses `colcon build --symlink-install` and `run_docker.sh` maps
+  `src → /workspace/src:rw`.
+- Readiness marker printed by the bash Nav2 bringup:
+  `Nav2 lifecycle bringup complete`. `run_docker.sh` polls for it
+  (90×2 s), and dumps `docker logs` on early exit.
 - Live accelerate battery drain (params re-read every 0.2 s tick):
   `ros2 param set /battery drain_rate 4.0` → restore `0.20` when done.
   Battery model drains only when `not docked and speed > 0.03` (from /odom +
   /cmd_vel_smoothed + /cmd_vel).
-- **docker exec gotcha**: quoting/`%` breaks one-liners. Write a script to host,
-  `docker cp` it, run it. Helper `/tmp/opencode/ros_exec.sh` (source /opt/ros/jazzy/setup.bash
-  + /workspace/install/setup.bash, exec "$@"). Re-sync it into a NEW container each boot:
-  `docker cp /tmp/opencode/ros_exec.sh house_cleaner_jazzy:/tmp/ros_exec.sh`.
+- **docker exec gotcha**: quoting/`%` breaks one-liners. Write a script to the
+  host, `docker cp` it, run it. Re-sync helpers into a NEW container each boot:
+  `docker cp /tmp/opencode/ros_exec.sh "$CONTAINER_NAME:/tmp/ros_exec.sh"`.
+
 
 ## 2. Files (inventory)
 
@@ -435,3 +437,91 @@ context loss — treat it as the source of truth for "where are we".
   STUCK_PATTERN. Relaunch validated: `stall_hold=8.0` live, **0 VEL_STALL in
   90 s**, goals 1–8/9 completing, single recover-mode watchdog PID.
   [KNOWN] host load ~16 / RTF ~0.5 still causes occasional TIMEOUT skips.
+
+## 6. Portability model (added 2026-10-09)
+
+The project was originally developed on a machine with Docker Desktop, ROS 2
+Jazzy and hardcoded `/home/koko/...` paths. Every one of those assumptions has
+been removed.
+
+`ros-distro.sh` is the single source of truth. It is sourced by `env.sh`,
+`run_docker.sh`, `run_gui_loop.sh`, `watchdog.sh`, `monitor_loop.sh`,
+`batt_probe2.sh` and `docker-compose.yml`, and by the Dockerfile via
+`--build-arg`. It sets:
+
+| Var | Meaning |
+| --- | --- |
+| `ROS_DISTRO` | Respects an explicit value; otherwise picks the newest installed LTS; otherwise guesses from the Ubuntu codename |
+| `ROS_ROOT`, `ROS_SETUP` | `/opt/ros/<distro>` and its `setup.bash` |
+| `WS_DIR` | Repo root, resolved from the script's own location |
+| `CONTAINER_NAME` | `house_cleaner_<distro>` |
+| `IMAGE_NAME` | `house_cleaner:<distro>` |
+| `TURTLEBOT3_MODEL`, `ROS_DOMAIN_ID` | `burger`, `30` unless already set |
+
+Choosing new distros requires editing only the `_rd_candidates` line and the
+codename case block in `ros-distro.sh`.
+
+### Docker flavour detection
+
+`run_docker.sh` distinguishes a **native Linux engine** from **Docker
+Desktop**, because they need entirely different display forwarding:
+
+- **Native** — the container shares the host's filesystem, so mounting
+  `/tmp/.X11-unix` and `$XDG_RUNTIME_DIR` just works. This is the fast, simple
+  path: no `socat`, no wildcard xauth cookie, no `host.docker.internal`.
+- **Docker Desktop** — containers run in a VM that cannot see the host's unix
+  sockets, so X must be tunneled over TCP and a wildcard cookie built. The old
+  code only ever did this, which is why it failed on a native engine.
+
+Flavour is decided from `DOCKER_HOST`, falling back to `docker context show`.
+
+### GPU
+
+The old script always mounted `/dev/dri` and baked
+`LIBGL_ALWAYS_SOFTWARE=1`, so a host GPU was never used and the simulator
+crawled. Now:
+
+1. NVIDIA runtime present (`nvidia-smi` works and `docker info` lists `nvidia`)
+   → `--gpus all` + `NVIDIA_DRIVER_CAPABILITIES=all`
+2. else `/dev/dri` present → mount it
+3. else → software rendering
+
+`LIBGL_ALWAYS_SOFTWARE` is auto-set from the result and is no longer baked
+into the image; an explicit value in the environment always wins.
+
+### GUI
+
+Wayland is preferred when `$XDG_RUNTIME_DIR/wayland-0` exists — no
+authentication to get wrong. X11 is the fallback.
+
+### Known porting risks (verify after a rebuild)
+
+- **Gazebo version changes with the distro**: lyrical → Jetty (gz-sim 10),
+  jazzy → Harmonic (gz-sim 8), humble → Fortress (gz-sim 6). `worlds/` and
+  `models/` SDF may need version-specific adjustments; the wall model is
+  deliberately simple to minimise this.
+- **Community packages**: `turtlebot3-gazebo` and `turtlebot3-description`
+  must have binaries for the target distro on packages.ros.org.
+- **Python version**: lyrical uses Python 3.14, where a `ament_python` entry
+  point generation bug has been reported (`ros2 run` failing with
+  `ModuleNotFoundError` even after a clean `colcon build`). If a console
+  script is missing from `/workspace/install/lib/<pkg>/`, this is the cause —
+  fix by ensuring the system `python3-setuptools` and `python3-wheel` are
+  installed, not by installing anything with pip.
+
+### Ledger
+
+- [DONE] **Portability overhaul (2026-10-09)**: `ros-distro.sh` added as the
+  single source of truth; `Dockerfile` takes `ROS_DISTRO` as a build arg;
+  `run_docker.sh` rewritten with Docker-flavour detection, Wayland support,
+  GPU auto-detection and an `LIBGL_ALWAYS_SOFTWARE` auto-default;
+  `entrypoint.sh`, `watchdog.sh`, `monitor_loop.sh`, `batt_probe2.sh`,
+  `run_gui_loop.sh` and `docker-compose.yml` all made distro- and path-
+  independent; every `/home/koko/...` absolute path removed. All scripts pass
+  `bash -n` and the compose file passes a YAML parse. Verified: distro
+  detection picks an installed distro over the preference list, honours an
+  explicit `ROS_DISTRO`, and falls back to the right distro per Ubuntu
+  codename; `run_docker.sh` builds correct argument sets for
+  Wayland+NVIDIA, X11+Docker-Desktop, and headless.
+  Not yet verified: a real image build, because ROS 2 and Docker were not
+  installed on the target machine at the time of the change.

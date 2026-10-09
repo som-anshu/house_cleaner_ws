@@ -115,18 +115,22 @@ docker run -it --rm \
 
 ### Docker Commands
 
+The container is named `house_cleaner_<distro>` (e.g. `house_cleaner_lyrical`).
+Get it into your shell with `source ros-distro.sh`, then use `$CONTAINER_NAME`.
+Substitute the literal name if you prefer.
+
 ```bash
 # View logs
-docker logs -f house_cleaner_jazzy
+docker logs -f $CONTAINER_NAME
 
 # Enter container shell
-docker exec -it house_cleaner_jazzy bash
+docker exec -it $CONTAINER_NAME bash
 
 # Stop the simulation
-docker stop house_cleaner_jazzy
+docker stop $CONTAINER_NAME
 
 # Remove the container
-docker rm house_cleaner_jazzy
+docker rm $CONTAINER_NAME
 ```
 
 ### Docker Configuration
@@ -222,7 +226,7 @@ RViz2 provides local 3D visualization.
 **Launch:**
 ```bash
 # In Docker
-docker exec -it house_cleaner_jazzy ros2 launch house_cleaner_bringup rviz2.launch.py
+docker exec -it $CONTAINER_NAME ros2 launch house_cleaner_bringup rviz2.launch.py
 
 # Native
 ros2 launch house_cleaner_bringup rviz2.launch.py
@@ -244,7 +248,7 @@ Manually control the robot in Gazebo for testing.
 **Launch:**
 ```bash
 # In Docker
-docker exec -it house_cleaner_jazzy ros2 launch house_cleaner_bringup teleop.launch.py
+docker exec -it $CONTAINER_NAME ros2 launch house_cleaner_bringup teleop.launch.py
 
 # Native
 ros2 launch house_cleaner_bringup teleop.launch.py
@@ -407,10 +411,10 @@ ros2 run tf2_tools view_frames
 
 ```bash
 # Docker logs
-docker logs -f house_cleaner_jazzy
+docker logs -f $CONTAINER_NAME
 
 # Enter container for debugging
-docker exec -it house_cleaner_jazzy bash
+docker exec -it $CONTAINER_NAME bash
 ```
 
 ---

@@ -4,4 +4,4 @@ log/
 .git/
 *.local
 .env
-lyrical.rviz
+*.rviz.local

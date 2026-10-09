@@ -2,9 +2,11 @@
 """Live battery monitor for house_cleaner_assistant.
 
 Usage:
-  source /opt/ros/jazzy/setup.bash
-  source <workspace>/env.sh
+  source <workspace>/env.sh          # sources the detected ROS distro + overlay
   python3 src/house_cleaner_bringup/scripts/battery_monitor.py
+
+env.sh discovers the ROS distro (lyrical, jazzy, humble, ...) for you, so there
+is no distro-specific source line to get wrong.
 
 Docker/tmux-safe: Uses explicit line breaks instead of cursor positioning,
 and ASCII characters instead of Unicode block chars for reliable render in
