@@ -26,6 +26,28 @@ set -e
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# -----------------------------------------------------------------------------
+# Never run this as root
+# -----------------------------------------------------------------------------
+# `sudo bash run_docker.sh` is an easy thing to type, and it fails in a way
+# that is hard to debug: HOME becomes /root, `id -u` becomes 0, so the
+# Wayland/X11 mounts point at /root and /run/user/0 instead of the real user's
+# display, and the docker group check is meaningless. Docker never needs sudo
+# to *invoke* - only the daemon must be running, and that is handled by
+# systemctl.
+if [ "$(id -u)" -eq 0 ]; then
+    echo "ERROR: do not run this script with sudo." >&2
+    echo "" >&2
+    echo "  Run it as your normal user instead:" >&2
+    echo "      $0 $*" >&2
+    echo "" >&2
+    echo "  Docker only needs sudo to START the daemon once:" >&2
+    echo "      sudo systemctl start docker" >&2
+    echo "  After that, ./run_docker.sh works without sudo, provided you are" >&2
+    echo "  in the docker group:  sudo usermod -aG docker \"\$USER\"" >&2
+    exit 1
+fi
+
 # ros-distro.sh resolves IMAGE_NAME, CONTAINER_NAME and ROS_DISTRO from what
 # is actually installed, rather than from a hardcoded string.
 # shellcheck disable=SC1091
