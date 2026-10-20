@@ -352,6 +352,19 @@ CLEANING -> (battery low) -> RETURNING -> DOCKING -> CHARGING -> UNDOCKING -> RE
 
 ---
 
+## Presentations & Documentation
+
+- **`docs/House_Cleaner_Robot.pptx`** — 16-slide, non-technical presentation:
+  what the robot does, the 5-step mission loop, how it maps/drives/docks,
+  why it never gets stuck, plus speaker notes on every slide.
+- **`DOCUMENTATION.md`** — full engineering reference (architecture, node
+  graph, interface contracts, algorithms, pseudocode, config reference).
+- Regenerate the deck with `~/anaconda3/bin/python tools/make_ppt.py`;
+  verify its layout with `tools/check_ppt.py` (geometry) and
+  `tools/check_rendered.py` (rendered PDF text positions).
+
+---
+
 ## Repository Layout
 
 ```
