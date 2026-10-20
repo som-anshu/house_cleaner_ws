@@ -600,3 +600,26 @@ authentication to get wrong. X11 is the fallback.
 - Full `./run_all.sh` run validated end-to-end: killed 3 accumulated stale
   watchdogs from previous boots, removed the old container, READY in ~90 s,
   all 8 checks [OK]; `--stop` and `--verify` also exercised.
+
+### 2026-10-21 — research-level project documentation (`DOCUMENTATION.md`)
+- New single-file reference manual (1304 lines / ~9.4k words, A4-friendly:
+  no table wider than 5 columns). Sections: aim & objectives, tech stack,
+  features, file/package structure, node graph + interface contracts (topic /
+  action / service / TF tables), launch system, mission state machine,
+  algorithms, non-coder pseudocode, configuration reference, deployment &
+  fault recovery, launch instructions, testing, future work, glossary,
+  references.
+- Diagrams are Mermaid (renders on GitHub): 2 × `flowchart TB`, 1 ×
+  `flowchart LR` node graph, 1 × `sequenceDiagram` boot order, 1 ×
+  `stateDiagram-v2` mission states; ASCII pseudocode blocks elsewhere.
+- Tabular purpose/input/output tables for every root script, source file and
+  launch/config file — the request was explicit about per-file I/O tables.
+- Algorithms documented with their real tuned numbers and the *reason* each
+  value was chosen: boustrophedon coverage, goal revalidation + keep-out,
+  NavFn Dijkstra, MPPI (critics table), goal/progress checkers, slam_toolbox
+  travel gating, laser creep (stall + flat-clearance latches), undock
+  verification, the three fault-detection layers (VEL_STALL / NAV_SILENT /
+  RETURN_BUDGET, host watchdog probes), and the safety chain.
+- Verification of the doc itself: balanced code fences (48), consistent pipe
+  counts in every Markdown table, valid Mermaid headers. One table row was
+  fixed after lint (a literal `|` inside an inline code span split the row).
