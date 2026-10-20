@@ -17,7 +17,16 @@ NAME="$CONTAINER_NAME"
 ROS_SRC=". /opt/ros/${ROS_DISTRO}/setup.bash >/dev/null 2>&1
 . /workspace/install/setup.bash >/dev/null 2>&1"
 
-> "$LOG"
+# APPEND=1 (set by run_all.sh's looping monitor) keeps history across passes;
+# the default truncates so a standalone run shows only its own window.
+if [ "${APPEND:-0}" = "1" ]; then
+  echo "=== pass $(date +%H:%M:%S) ===" >> "$LOG"
+  # Only lines written from here on count for this pass's early-exit check.
+  START_LINE=$(( $(wc -l < "$LOG") + 1 ))
+else
+  > "$LOG"
+  START_LINE=1
+fi
 for i in $(seq 1 48); do
   ts=$(date +%H:%M:%S)
   batt=$(docker exec "$NAME" bash -lc "$ROS_SRC
@@ -27,8 +36,11 @@ for i in $(seq 1 48); do
   mode=$(docker logs "$NAME" 2>&1 | grep -E "mission_supervisor" | grep -oE "return-to-dock|charging|SEATED|creeping|actively charging|resuming mission|overall mission" | tail -1)
   goal=$(docker logs "$NAME" 2>&1 | grep -oE "goal [0-9]+/[0-9]+" | tail -1)
   echo "$ts batt=${batt:-NA}% seated=${seated:-NA} mission=$goal $mode" >> "$LOG"
-  # stop early if we saw a charge->resume transition
-  if grep -qE "resuming mission" "$LOG"; then echo "DONE - charge->resume observed" >> "$LOG"; break; fi
+  # stop early if THIS pass saw a charge->resume transition
+  if tail -n "+${START_LINE}" "$LOG" | grep -qE "resuming mission"; then
+    echo "DONE - charge->resume observed" >> "$LOG"
+    break
+  fi
   sleep 20
 done
 echo "=== final ==="; tail -6 "$LOG"

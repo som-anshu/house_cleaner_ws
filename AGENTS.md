@@ -28,6 +28,13 @@ source env.sh
 
 Run everything from the repo root.
 
+- **One command for the whole GUI setup: `./run_all.sh`** — kills stale
+  instances (watchdog, battery monitor, old container), launches Gazebo GUI +
+  RViz + Foxglove bridge + mission loop + watchdog + looping battery monitor,
+  then health-checks every piece. Flags: `--stop` (kill stale only),
+  `--verify` (checks only). Re-execs through `sg docker` automatically when
+  the session lacks the docker group. `make launch` / `make stop` /
+  `make verify` wrap the same script.
 - Launch stack headless (CI-like default): `./run_docker.sh --headless`
   Prints READY when Nav2 lives.
 - GUI **mission loop** (Gazebo GUI + RViz + restart coverage after dock):

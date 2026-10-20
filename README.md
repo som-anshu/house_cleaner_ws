@@ -59,9 +59,27 @@ The robot maps an unknown room with SLAM, plans a full-coverage cleaning path, a
 git clone git@github.com:som-anshu/house_cleaner_ws.git
 cd house_cleaner_ws
 
-# Run the simulation (builds automatically on first run)
-./run_docker.sh
+# One command: kills stale instances, launches everything, verifies it came up
+./run_all.sh
 ```
+
+`run_all.sh` is the recommended entry point. It first stops any stale
+watchdog/battery-monitor processes and removes any previous container (in
+that order — the watchdog would otherwise relaunch the container), then
+starts the full stack and health-checks it: Gazebo, RViz, Nav2, the Foxglove
+WebSocket handshake, `/battery_state`, watchdog and monitor. Related commands:
+
+```bash
+./run_all.sh --stop      # kill stale instances only
+./run_all.sh --verify    # re-run the health checks
+make launch              # same as ./run_all.sh
+make stop / make verify  # same as the flags above
+```
+
+If your user is in the `docker` group but the current login session predates
+it, `run_all.sh` re-executes itself through `sg docker` automatically.
+
+`./run_docker.sh` is the lower-level launcher `run_all.sh` builds on:
 
 **That's it!** The simulation will start with:
 - Gazebo GUI showing the house room
