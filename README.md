@@ -357,11 +357,16 @@ CLEANING -> (battery low) -> RETURNING -> DOCKING -> CHARGING -> UNDOCKING -> RE
 - **`docs/House_Cleaner_Robot.pptx`** — 16-slide, non-technical presentation:
   what the robot does, the 5-step mission loop, how it maps/drives/docks,
   why it never gets stuck, plus speaker notes on every slide.
+- **`docs/House_Cleaner_Robot_Technical.pptx`** — 16-slide *technical* deck:
+  the same story told in real ROS 2 / Nav2 vocabulary — node graph, topic
+  contracts, QoS, the velocity chain, MPPI critics, costmap layers, fault
+  detectors, watchdog tiers. Speaker notes on every slide.
 - **`DOCUMENTATION.md`** — full engineering reference (architecture, node
   graph, interface contracts, algorithms, pseudocode, config reference).
-- Regenerate the deck with `~/anaconda3/bin/python tools/make_ppt.py`;
-  verify its layout with `tools/check_ppt.py` (geometry) and
-  `tools/check_rendered.py` (rendered PDF text positions).
+- Regenerate either deck with `~/anaconda3/bin/python tools/make_ppt.py`
+  (intro) or `tools/make_ppt_technical.py` (technical); verify layout with
+  `tools/check_ppt.py` (geometry) and `tools/check_rendered.py` (rendered
+  PDF text positions).
 
 ---
 
