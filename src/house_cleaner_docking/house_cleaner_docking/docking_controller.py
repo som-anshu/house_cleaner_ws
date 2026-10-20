@@ -240,7 +240,7 @@ class DockingController(Node):
                     f"DOCKED — timeout but pressed (front {fwd:.3f} m)"
                 )
             else:
-                self.get_logger().warn(
+                self.get_logger().warning(
                     f"DOCKING — failed to seat this pass "
                     f"(front {fwd if fwd is None else round(fwd, 2)} m)"
                 )
@@ -301,7 +301,7 @@ class DockingController(Node):
         # so a blocked undock reports failure instead of silent success.
         moved = integrated >= (self.undock_meters * 0.5)
         if not moved:
-            self.get_logger().warn(
+            self.get_logger().warning(
                 f"UNDOCK blocked (integrated {integrated:.2f} m "
                 f"< {self.undock_meters * 0.5:.2f} m)"
             )

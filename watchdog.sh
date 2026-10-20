@@ -24,6 +24,8 @@ INTERVAL=15
 STALL=180
 # consecutive recovery failures before full container restart
 MAX_SOFT=2
+# debounce: velocity-chain probe must hit twice in a row before we bounce
+CHAIN_HIT=0
 
 mkdir -p /tmp/opencode
 echo "$(date -Is) watchdog start (recover mode) distro=${ROS_DISTRO} container=${NAME}" >>"$LOG"
@@ -95,14 +97,25 @@ probe_reason() {
     echo "LOG_SILENCE_${age}s"
     return
   fi
-  # 2) recent RETURNING TIMEOUT streak (talking but stuck)
-  local timeouts
-  timeouts=$(docker logs --since 6m "$NAME" 2>/dev/null \
+  # 2) mission wedged: fresh stall lines AND no progress markers.
+  #    The window must be SHORT and progress must be zero: the old check
+  #    counted VEL_STALL lines over 6 minutes, so one goal that stalled and
+  #    then recovered (4 lines) kept tripping for minutes after the mission
+  #    was already reaching goals again — that fed full-restart loops
+  #    (2026-10-20 19:08-19:26).  "Reached the goal!"/DOCKED/CHARGED in the
+  #    last 240 s means the stack is alive; skip.
+  local stalls reached
+  stalls=$(docker logs --since 100s "$NAME" 2>/dev/null \
     | grep -c 'Return-to-dock approach TIMEOUT\|RETURN BUDGET exceeded\|BATTERY EMPTY\|VEL_CHAIN_STALL\|VEL_STALL' \
     || true)
-  if [ "${timeouts:-0}" -ge 3 ]; then
-    echo "STUCK_PATTERN_timeouts=${timeouts}"
-    return
+  if [ "${stalls:-0}" -ge 4 ]; then
+    reached=$(docker logs --since 240s "$NAME" 2>/dev/null \
+      | grep -c 'Reached the goal!\|DOCKED\|CHARGED to' \
+      || true)
+    if [ "${reached:-0}" -eq 0 ]; then
+      echo "STUCK_PATTERN stalls=${stalls} reached=${reached}"
+      return
+    fi
   fi
   # 3) battery empty while not charging
   local pct seated charge
@@ -121,7 +134,11 @@ probe_reason() {
       fi
     fi
   fi
-  # 4) velocity chain: nav live, final silent (quick 2s hz probe)
+  # 4) velocity chain: nav live, final silent (quick 2s hz probe).
+  #    Debounced: one 3 s window under host load or during an inter-goal gap
+  #    can read empty, and the bounce it triggers itself creates 4 s of real
+  #    /cmd_vel silence that looks like a stall to the supervisor.  Require
+  #    two consecutive hits (one probe interval apart) before reacting.
   local nav_hz out_hz
   nav_hz=$(docker exec "$NAME" bash -lc "$ROS_SRC
     timeout 3 ros2 topic hz /cmd_vel_nav 2>/dev/null | head -1 | grep -oE \"[0-9.]+\" | head -1" 2>/dev/null || true)
@@ -129,10 +146,15 @@ probe_reason() {
     timeout 3 ros2 topic hz /cmd_vel 2>/dev/null | head -1 | grep -oE \"[0-9.]+\" | head -1" 2>/dev/null || true)
   if [ -n "${nav_hz:-}" ] && awk -v h="$nav_hz" 'BEGIN { exit !(h >= 2) }'; then
     if [ -z "${out_hz:-}" ] || awk -v h="$out_hz" 'BEGIN { exit !(h < 1) }'; then
-      echo "VEL_CHAIN nav_hz=$nav_hz out_hz=${out_hz:-0}"
+      if [ "${CHAIN_HIT:-0}" -ge 1 ]; then
+        echo "VEL_CHAIN nav_hz=$nav_hz out_hz=${out_hz:-0}"
+        return
+      fi
+      CHAIN_HIT=1
       return
     fi
   fi
+  CHAIN_HIT=0
   echo ""
 }
 

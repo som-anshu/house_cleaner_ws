@@ -139,33 +139,9 @@ if [ "$HEADLESS" = false ] && [ "$SHELL_MODE" = false ]; then
     UID_NUM="$(id -u)"
     RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/${UID_NUM}}"
 
-    if [ -S "${RUNTIME_DIR}/wayland-0" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; then
-        # Wayland. This is the native session type on Ubuntu and is preferred:
-        # it puts the container on the same compositor, so there is no X11
-        # authentication to get wrong at all.
-        SESSION_TYPE="wayland"
-        echo "Display server: Wayland (${WAYLAND_DISPLAY:-wayland-0})"
-
-        if [ "$DOCKER_FLAVOUR" = "native" ]; then
-            # Native engine: share the compositor socket directly.
-            GUI_ARGS+=(
-                -e "WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-wayland-0}"
-                -e "XDG_RUNTIME_DIR=${RUNTIME_DIR}"
-                -v "${RUNTIME_DIR}:${RUNTIME_DIR}"
-                -e "QT_QPA_PLATFORM=wayland"
-                -e "GDK_BACKEND=wayland"
-                -e "SDL_VIDEODRIVER=wayland"
-            )
-        else
-            # Docker Desktop VM cannot see the host socket. Contained Wayland
-            # clients cannot realistically use the host compositor either, so
-            # fall back to X11-over-TCP via Xwayland, which does tunnel.
-            echo "  Docker Desktop VM cannot share the Wayland socket; using X11-over-TCP."
-            SESSION_TYPE="x11-tcp"
-        fi
-    fi
-
-    if [ "$SESSION_TYPE" = "none" ] || [ "$SESSION_TYPE" = "x11-tcp" ]; then
+    # Prefer X11 over Wayland: rviz2 and Gazebo's OGRE renderer need GLX (X11),
+    # which does not work under Wayland inside a container.
+    if [ -n "${DISPLAY:-}" ]; then
         # ---- X11 ------------------------------------------------------------
         X_DISPLAY_NUM="${DISPLAY#*:}"
         X_DISPLAY_NUM="${X_DISPLAY_NUM%%.*}"
@@ -188,6 +164,13 @@ if [ "$HEADLESS" = false ] && [ "$SHELL_MODE" = false ]; then
                     -e "DISPLAY=:${X_DISPLAY_NUM}"
                     -v "/tmp/.X11-unix:/tmp/.X11-unix"
                     -e "QT_X11_NO_MITSHM=1"
+                    -e "__GLX_VENDOR_LIBRARY_NAME=nvidia"
+                    -e "LIBGL_ALWAYS_SOFTWARE=0"
+                    # NVIDIA GLX vblank bug makes RViz/Gazebo panes flicker
+                    # inside containers; xpresent presents every frame
+                    # immediately instead of waiting on a broken vblank.
+                    -e "vblank_mode=xpresent"
+                    -e "__GL_SYNC_TO_VBLANK=0"
                 )
             else
                 # Docker Desktop: tunnel the host X socket to a TCP port and
@@ -299,6 +282,7 @@ fi
 if [ "$SHELL_MODE" = true ]; then
     echo "Starting interactive shell..."
     exec docker run -it --rm --name "$NAME" \
+        --cpus=0 \
         "${GUI_ARGS[@]}" \
         -e "TURTLEBOT3_MODEL=${TURTLEBOT3_MODEL}" \
         -e "ROS_DOMAIN_ID=${ROS_DOMAIN_ID}" \
@@ -336,6 +320,7 @@ fi
 # the log file grows unbounded inside the Docker storage volume.
 docker run -d --name "$NAME" \
     --log-opt max-size=50m --log-opt max-file=5 \
+    --cpus=0 \
     "${GUI_ARGS[@]}" \
     -e "TURTLEBOT3_MODEL=${TURTLEBOT3_MODEL}" \
     -e "ROS_DOMAIN_ID=${ROS_DOMAIN_ID}" \
@@ -375,5 +360,7 @@ if [ "$READY" = true ]; then
 else
     echo "WARN: readiness marker not seen after 180s — check docker logs -f ${NAME}"
 fi
-echo "  Foxglove: http://localhost:8765"
+echo "  Foxglove: open https://app.foxglove.dev and connect to ws://localhost:8765"
+echo "            (the bridge is a WebSocket server, not a web page; layout:"
+echo "            src/house_cleaner_bringup/config/foxglove_layout.json)"
 echo "  Stop:     docker stop ${NAME}"

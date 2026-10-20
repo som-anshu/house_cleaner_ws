@@ -525,3 +525,78 @@ authentication to get wrong. X11 is the fallback.
   Wayland+NVIDIA, X11+Docker-Desktop, and headless.
   Not yet verified: a real image build, because ROS 2 and Docker were not
   installed on the target machine at the time of the change.
+
+- [DONE] **GUI mission-loop stability pass (2026-10-20)**: five root causes
+  found and fixed; two full cleaning → return → dock → charge → undock →
+  resume cycles then ran with **zero watchdog restarts**.
+  1. **`TwistStamped` vs `Twist`** — `enable_stamped_cmd_vel: false` on
+     `controller_server` + `behavior_server` (already in place before this
+     pass); without it Nav2 published nothing the bridge understood.
+  2. **Docking crash** — `self.get_logger().warn(...)` in
+     `docking_controller.py` (lines 243/304). `warn()` was removed from
+     Lyrical's rclpy, so the node died the moment a creep attempt failed
+     (which is why clean first-try docks worked and failed ones lost the
+     node). Changed to `warning()` and rebuilt `house_cleaner_docking`.
+  3. **Collision-monitor deadlock** — `PolygonStop` (`action_type: stop`)
+     forced `req_vel` to zero every cycle; after `stop_pub_timeout` Nav2's
+     collision monitor *ceases publishing `/cmd_vel` entirely*
+     (`publishVelocity()` in `nav2_collision_monitor_node.cpp`). Because the
+     robot was stopped, the obstacle never left the 3–15 cm front polygon,
+     so the chain stayed silent forever and every later goal looked like a
+     dead velocity chain (VEL_STALL storms → watchdog full restarts). The
+     stop polygon is removed; `PolygonSlow` (45 %) and MPPI avoidance remain.
+     `source_timeout` raised 1.0 → 3.0 s so a slow scan under host load does
+     not trip the fail-safe.
+  4. **Stale `map→odom` after undock** — `minimum_travel_distance: 0.5` while
+     the undock backs out exactly 0.48 m, so slam_toolbox never re-matched
+     the final move. The robot's map pose stayed inside the dock and the
+     planner aborted every goal with "Failed to create plan with tolerance
+     of: 0.300000" (goal unreachable from an enclosed start). Lowered to
+     `minimum_travel_distance: 0.15` / `minimum_travel_heading: 0.20`.
+  5. **Mission fail-fast** — cleaning goal timeout 90 → 45 s (first goal and
+     RETURNING stay at 90 s); `xy_goal_tolerance` / `yaw_goal_tolerance`
+     0.20/0.22 → 0.30/0.30 (MPPI settles ~0.28 m short and never satisfied
+     the old checker); new `NAV_SILENT` detector (MPPI alive but commanding
+     zero for 15 s) skips a frozen point in ~20 s instead of the full
+     timeout; `ABORTED` planner failures are skipped without the wasted
+     retry; return-to-dock walks five nearby approach candidates instead of
+     the unplannable dock pose (creep is laser-guided, so any pose roughly in
+     front works). Planner `tolerance` 0.25 → 0.30 (must stay ≤ the goal
+     checker's xy tolerance).
+  Validation: boot gate sends goal 1 within ms of collision_monitor ACTIVE;
+  pass 1 8/10, pass 2 9/10 reached; return in ~2 s; dock seated (creep
+  retries once after a failed attempt), charge to 95 %, undock, resume;
+  watchdog log shows only `progress:` lines (0 RECOVER / 0 FULL_RESTART);
+  freeze dumps show the remaining skips are near-goal cells with an obstacle
+  within ~0.13 m, handled in ~20 s.
+
+### 2026-10-21 — one-command launcher (`run_all.sh`) + Foxglove protocol note
+- New `run_all.sh`: kill stale instances (watchdog + battery monitor first —
+  the watchdog would relaunch a container we are removing — then `docker rm -f`
+  the container, then sweep host strays from native runs) → `run_gui_loop.sh`
+  (launch + helper copy + watchdog) → looping battery monitor (`APPEND=1
+  monitor_loop.sh`, history kept in `/tmp/opencode/dockloop.txt`) → built-in
+  health check: container, gz-sim-main, rviz2, Nav2 READY marker, Foxglove
+  WebSocket 101 handshake, `/battery_state`, watchdog, monitor.
+  Flags: `--stop` (kill only), `--verify` (checks only). Re-execs itself via
+  `sg docker -c` when the session lacks the docker group (group membership
+  applied at login; `docker info` → "permission denied" otherwise).
+  `Makefile` launch/stop/verify now wrap it; dropped the stale
+  `../launch_gui.py` reference and the hardcoded `lyrical` in `setup` /
+  check targets (uses `ros-distro.sh` detection like everything else).
+- Verification bugs found and fixed while testing the verifier itself:
+  1. RViz spawns a few seconds *after* the Nav2 READY marker, so a single
+     instantaneous probe reported a false FAIL right after launch — checks now
+     retry for ~60 s (`retry` helper, 12 × 5 s).
+  2. `docker logs | grep -q PATTERN` under `set -o pipefail` returns 141
+     (SIGPIPE: `grep -q` exits on first match, closing the log stream) once
+     the log is large — it only appeared to work while the log was tiny
+     right after boot. `clog_has`/`ctop_has` disable pipefail locally.
+- Foxglove: the bridge (3.6.0) is WebSocket-only and requires the
+  `foxglove.sdk.v1` subprotocol; a plain GET to :8765 returns 400 "Missing
+  expected sec-websocket-protocol header". Open https://app.foxglove.dev and
+  connect to `ws://localhost:8765` — it is not a web page. The verifier
+  probes with a real upgrade request expecting HTTP 101.
+- Full `./run_all.sh` run validated end-to-end: killed 3 accumulated stale
+  watchdogs from previous boots, removed the old container, READY in ~90 s,
+  all 8 checks [OK]; `--stop` and `--verify` also exercised.

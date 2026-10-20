@@ -46,6 +46,11 @@ amcl:
     z_short: 0.05
 behavior_server:
   ros__parameters:
+    # Lyrical defaults this to true (TwistStamped), but velocity_smoother,
+    # collision_monitor, the gz bridge and every helper here use plain Twist —
+    # the type mismatch silently breaks the whole cmd_vel chain (robot never
+    # moves).  Keep the entire chain unstamped.
+    enable_stamped_cmd_vel: false
     backup:
       plugin: nav2_behaviors::BackUp
     behavior_plugins:
@@ -88,12 +93,15 @@ collision_monitor:
       speed_limit_pct: 45.0
       type: polygon
       visualize: false
-    PolygonStop:
-      action_type: stop
-      min_points: 4
-      points: '[[0.15, 0.105], [0.15, -0.105], [0.03, -0.105], [0.03, 0.105]]'
-      type: polygon
-      visualize: false
+    # NOTE: the former PolygonStop (action_type: stop) polygon is deliberately
+    # gone. It deadlocked the whole cmd_vel chain: while any scan point sits
+    # in the 3-15 cm front polygon, collision_monitor forces the output to
+    # zero, and after stop_pub_timeout it *ceases publishing entirely*
+    # (nav2_collision_monitor_node.cpp publishVelocity()). Because the robot
+    # is stopped, the obstacle never leaves the polygon, so /cmd_vel stays
+    # silent forever -> every following goal looks like a dead velocity
+    # chain (VEL_STALL) until the stack is restarted. PolygonSlow still
+    # limits speed near obstacles and MPPI's costmap avoidance remains on.
     base_frame_id: base_footprint
     base_shift_correction: true
     cmd_vel_in_topic: /cmd_vel_smoothed
@@ -105,18 +113,24 @@ collision_monitor:
     odom_frame_id: odom
     polygons:
     - PolygonSlow
-    - PolygonStop
     scan:
       min_points: 4
       topic: /scan
       type: scan
-    source_timeout: 1.0
+    # 1.0 s was shorter than the worst gz bridge gap under host load; a
+    # timed-out source makes the monitor drop to its fail-safe and stop
+    # publishing. 3 s still catches a truly dead lidar.
+    source_timeout: 3.0
     state_topic: /collision_monitor_state
     stop_pub_timeout: 2.0
     transform_tolerance: 0.5
     use_sim_time: true
 controller_server:
   ros__parameters:
+    # Lyrical default is true (TwistStamped) — but velocity_smoother /
+    # collision_monitor / gz bridge all speak plain Twist, so the smoother
+    # never receives anything and the robot never moves.  Keep unstamped.
+    enable_stamped_cmd_vel: false
     FollowPath:
       AckermannConstraints:
         min_turning_r: 0.2
@@ -227,8 +241,11 @@ controller_server:
     general_goal_checker:
       plugin: nav2_controller::SimpleGoalChecker
       stateful: false
-      xy_goal_tolerance: 0.20
-      yaw_goal_tolerance: 0.22
+      # 0.20 froze the return approach: MPPI stops ~0.28 m short of the
+      # waypoint (cost gradient vanishes near the goal) and the goal checker
+      # never fires, burning the whole nav budget. 0.30 accepts that stop.
+      xy_goal_tolerance: 0.30
+      yaw_goal_tolerance: 0.30
     goal_checker_plugins:
     - general_goal_checker
     min_theta_velocity_threshold: 0.001
@@ -359,7 +376,10 @@ planner_server:
       # CostCritic 3.5, laser-marked costmap, and mission keep-out filter.
       allow_unknown: true
       plugin: nav2_navfn_planner::NavfnPlanner
-      tolerance: 0.25
+      # Must stay <= the goal checker's xy tolerance (0.30): Navfn snaps the
+      # goal to the nearest free cell within this radius, and a further snap
+      # would leave the robot unable to ever satisfy the goal checker.
+      tolerance: 0.30
       use_astar: false
     planner_plugins:
     - GridBased

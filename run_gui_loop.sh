@@ -63,5 +63,5 @@ if [ -f "$DIR/watchdog.sh" ]; then
 else
   echo "WARNING: watchdog.sh missing - no stall recovery"
 fi
-echo "Foxglove: http://localhost:8765"
+echo "Foxglove: open https://app.foxglove.dev and connect to ws://localhost:8765 (WebSocket, not a web page)"
 echo "Stop: docker stop $CONTAINER_NAME"

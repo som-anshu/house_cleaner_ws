@@ -273,12 +273,13 @@ def generate_launch_description():
     )
 
     # ---------------------------------------------------------------- 7. GUI
-    rviz2 = Node(
-        package='rviz2', executable='rviz2', name='rviz2', output='screen',
-        arguments=['-d', os.path.join(BRINGUP, 'config', 'house_cleaning.rviz')],
-        parameters=[{'use_sim_time': use_sim_time}],
-        # No X display when headless — rviz2 would SIGABRT.  GUI windows only
-        # when gui:=true AND not headless.
+    # Launch rviz2 as a separate process so its crash doesn't kill the robot.
+    # rviz2 uses OGRE/GLX which can fail in containers; the robot must keep
+    # running regardless of rviz2's status.
+    rviz2 = ExecuteProcess(
+        cmd=['rviz2', '-d', os.path.join(BRINGUP, 'config', 'house_cleaning.rviz'),
+             '--ros-args', '-p', 'use_sim_time:=true'],
+        output='screen',
         condition=IfCondition(AndSubstitution(
             LaunchConfiguration('gui'), NotSubstitution(headless))),
     )

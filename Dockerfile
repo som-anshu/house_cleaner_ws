@@ -36,7 +36,6 @@ ENV ROS_DISTRO=${ROS_DISTRO}
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-${ROS_DISTRO}-slam-toolbox \
     ros-${ROS_DISTRO}-turtlebot3-gazebo \
-    ros-${ROS_DISTRO}-turtlebot3-description \
     ros-${ROS_DISTRO}-ros-gz-sim \
     ros-${ROS_DISTRO}-ros-gz-bridge \
     ros-${ROS_DISTRO}-nav2-msgs \
@@ -83,7 +82,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libwayland-cursor0 \
     libwayland-server0 \
     libsdl2-2.0-0 \
-    libassimp5 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace

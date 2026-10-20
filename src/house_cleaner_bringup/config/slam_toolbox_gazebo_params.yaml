@@ -29,5 +29,10 @@ slam_toolbox:
     # Scan matching
     use_scan_matching: true
     use_scan_barycenter: true
-    minimum_travel_distance: 0.5
-    minimum_travel_heading: 0.5
+    # Must stay below the dock undock distance (0.48 m) — at 0.5 m the final
+    # undock move never triggered a scan match, so map->odom stayed stale by
+    # ~0.5 m and the robot's map pose sat *inside* the dock after every
+    # undock. The planner then failed with "Failed to create plan" on every
+    # goal because the start was enclosed by the dock's lethal cells.
+    minimum_travel_distance: 0.15
+    minimum_travel_heading: 0.20
