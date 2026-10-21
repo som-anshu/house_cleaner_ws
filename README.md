@@ -226,16 +226,41 @@ The single `house_cleaning.launch.py` drives both sim and real hardware
 Foxglove provides web-based visualization accessible from any device on your network.
 
 **Access:**
-1. Open browser to: http://localhost:8765
-2. Or use Foxglove app: ws://localhost:8765
-3. Select "Foxglove WebSocket" connection type
+1. Open <https://app.foxglove.dev> in a browser (or the Foxglove desktop app).
+2. Choose **Open connection** → **Foxglove WebSocket**.
+3. Enter `ws://localhost:8765` and connect.
+
+The bridge is a **WebSocket server, not a web page** — navigating directly to
+`http://localhost:8765` returns an HTTP error by design. A plain page load also
+cannot complete the handshake, because the server requires the
+`foxglove.sdk.v1` subprotocol.
+
+**Panels in the provided layout** (`config/foxglove_layout.json`, import via
+*Layouts → Import layout*):
+
+| Panel | Topic | What it shows |
+| --- | --- | --- |
+| 3D Scene | `/scan`, `/map`, costmaps, `/plan` | Robot model, lidar points, live map, global + local costmaps, planned path |
+| Occupancy Map | `/map` | SLAM occupancy grid in 2D |
+| Battery Percentage | `/battery_state.percentage` | Live battery trace |
+| Battery Raw | `/battery_state` | percentage / voltage / current fields |
+| Robot Velocity | `/cmd_vel_smoothed`, `/cmd_vel` | Commanded `linear.x` + `angular.z`, and the post-collision-monitor value |
+| Odometry | `/odom` | Measured twist from wheel odometry |
+| Lidar Raw | `/scan` | Full `LaserScan` message fields |
+| Lidar Range Sectors | `/scan.ranges[0]`, `[90]`, `[270]` | Front / left / right range traces |
+| Dock + Mission State | `/dock/state` | Seated / charging / fault state |
+
+> **Battery units:** `/battery_state.percentage` follows the ROS convention of a
+> **0–1 fraction** (0.95 = 95%), so the plot's Y axis reads 0–1. The label says
+> so explicitly to avoid it being misread as a percentage.
 
 **Features:**
-- 3D robot model view
+- 3D robot model view with lidar point cloud
 - Map and costmap visualization
-- Laser scan display
-- Battery state monitoring
-- Real-time topic plotting
+- Laser scan display (3D points + front/left/right range traces)
+- Battery state monitoring with live plot
+- Robot velocity plotting (commanded vs post-safety-filter)
+- Raw message inspection for any topic
 
 ### RViz2 (Local)
 

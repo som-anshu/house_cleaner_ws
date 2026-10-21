@@ -702,4 +702,34 @@ authentication to get wrong. X11 is the fallback.
   (mounted read-only)`, all 8 checks `[OK]`, rviz2 alive with no Qt/auth
   errors, and the mission cleaning (goal 3/9 done, ~7 s per goal).
 
+### 2026-10-21 — Foxglove layout rebuilt (battery %, velocity, lidar)
+- The shipped layout was broken and would have failed on import:
+  * `"type": " LaserScan"` — leading space, and Foxglove has no `LaserScan`
+    panel type. Lidar is rendered as a topic inside the 3D panel.
+  * `"type": "state"` — no such panel type in Foxglove; replaced with
+    `rawMessages`.
+  * the 3D panel's `topics` was a mixed list containing
+    `/robot_state_publisher`, which is a node, not a topic.
+  * old-style `"topics": [...]` string arrays and `camera.position/target`
+    are superseded by the current `topics` map + `cameraState` schema.
+- Rebuilt with 9 panels: 3D scene (lidar points, map, global + local
+  costmaps, plan, optimal path), occupancy map, battery percentage plot,
+  battery raw, velocity plot, odometry raw, lidar raw, lidar range-sector
+  plot, dock state.
+- Field paths verified against the live messages before writing, so the plots
+  are not silently empty: `/battery_state.percentage` (0.9512), `/scan` has
+  360 ranges with `angle_min 0.0` / `increment 0.01749`, so `ranges[0]`,
+  `[90]`, `[270]` are genuinely front / left / right (0.830 / 2.491 /
+  2.378 m). Velocity paths use `twist.twist.linear.x` / `.angular.z` on
+  `/odom` and `linear.x` / `angular.z` on the Twist topics.
+- Deliberate choice: `/battery_state.percentage` is a 0–1 fraction (ROS
+  standard), so the plot axis reads 0–1 and the label states the unit rather
+  than mislabelling a fraction as a percentage.
+- The layout is NOT loaded by any launch file — it is a manual browser import
+  (`Layouts → Import layout`), so editing it needs no relaunch.
+- README's Foxglove section corrected: it previously said to browse to
+  http://localhost:8765, which cannot work (WebSocket server, and the
+  handshake requires the `foxglove.sdk.v1` subprotocol).
+
+
 
