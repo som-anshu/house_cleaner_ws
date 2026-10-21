@@ -873,6 +873,56 @@ authentication to get wrong. X11 is the fallback.
 - NOTE: config/*.yaml and launch/*.py are bind-mounted, so a relaunch is
   enough; only new console-script entry points need `./run_docker.sh --build`.
 
+### 2026-10-21 (cont.) — persistence audit (does it survive a reboot?)
+- Question asked: are these fixes permanent, or do they stop working after a
+  reboot? Audited the whole chain rather than assuming.
+- RESOLUTION CHAIN (three independent hops, all verified):
+  * Host `src/house_cleaner_bringup/config/*.yaml` lives in the repo and is in
+    git (`57d416e`), so it survives anything short of deleting the repo.
+  * `run_docker.sh` bind-mounts `src/` -> `/workspace/src`, so host edits reach
+    the container with NO rebuild.
+  * `install/` is a SYMLINK into `src/`
+    (`install/.../config/nav2_params.yaml -> /workspace/src/.../nav2_params.yaml`,
+    confirmed with readlink), so the launch file's `get_package_share_directory`
+    path resolves straight through to the mounted source.
+- NOTHING CLOBBERS THEM: no systemd unit, no `~/.config/autostart` entry, no
+  cron job, and no script in tools/, scripts/ or the repo root writes either
+  params file. There is no autostart at all — the stack only starts when
+  `run_all.sh` is run.
+- REAL HAZARD FOUND AND FIXED: the Docker IMAGE baked its own stale copy of
+  `src/` (COPY src/ src/ + colcon build at image-build time). That baked copy
+  still had `wz_max: 2.5`, no `correlation_search_space_dimension`, and no
+  `timeout 10` lifecycle calls. While the bind mount is active it shadows the
+  stale copy, so the running stack was correct — but the image alone was NOT,
+  which is a latent trap: if the mount ever failed or the path changed, the
+  container would silently serve `wz_max: 2.5` and the tearing would return
+  with no obvious cause.
+  * FIX: rebuilt the image (`docker build --build-arg ROS_DISTRO=lyrical`).
+    Verified the baked copy now carries wz_max 0.9, the slam search dims, and
+    the 4 bounded lifecycle calls.
+  * Verified by launching the image with NO src mount at all and resolving via
+    `ros2 pkg prefix house_cleaner_bringup`: it serves wz_max 0.9 and
+    correlation_search_space_dimension 1.0. So there are now TWO independent
+    sources of truth (mount and image), either sufficient alone.
+- REBOOT SIMULATION run end to end: `./run_all.sh --stop` -> `docker rm -f`
+  (0 containers left) -> `./run_all.sh`. All 8 checks passed, and the fixes
+  were confirmed LIVE in the freshly created container, not merely present in
+  the files:
+    FollowPath.wz_max                     = 0.9
+    velocity_smoother.max_velocity        = [0.65, 0.0, 0.9]
+    correlation_search_space_dimension    = 1.0
+    loop_search_space_dimension           = 3.0
+    scan drops (45 s)                     = 0
+- POST-REBOOT STABILITY (60 s of driving in the freshly created container):
+  0 jumps >15 cm, largest correction 6.6 cm, total span 0.066 m / 0.062 m.
+  Compare pre-fix: 6.8 m / 5.7 m span with 143 cm snaps. The map is now
+  effectively locked.
+- OPERATIONAL NOTE: `./run_all.sh` is all that is needed after a reboot. A
+  rebuild (`./run_docker.sh --build`) is only required when changing the
+  Dockerfile, entrypoint.sh, package dependencies, or adding a new
+  console-script entry point — not for config or launch edits.
+
+
 
 
 

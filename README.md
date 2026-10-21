@@ -79,6 +79,24 @@ make stop / make verify  # same as the flags above
 If your user is in the `docker` group but the current login session predates
 it, `run_all.sh` re-executes itself through `sg docker` automatically.
 
+### After a reboot
+
+**Nothing extra is required — run `./run_all.sh`.** Configuration and launch
+changes persist because:
+
+| Change type | Why it survives a reboot | Rebuild needed? |
+| --- | --- | --- |
+| `config/*.yaml`, `launch/*.py` | `src/` is bind-mounted, and `install/` symlinks back into it | **No** — relaunch only |
+| Robot nodes (`*.py` in a package) | same symlink-install path | **No** |
+| Dockerfile, `entrypoint.sh`, new apt deps | baked into the image at build time | **Yes** — `./run_docker.sh --build` |
+| A new console-script entry point | `install/` is baked into the image | **Yes** — `./run_docker.sh --build` |
+
+The image also contains its own copy of `src/`, so after changing config you
+should rebuild when convenient — that keeps the two sources of truth in step
+and means the container is correct even if the bind mount ever fails. The
+running stack always prefers the bind mount, so a stale image does **not**
+break a normal `./run_all.sh` launch.
+
 `./run_docker.sh` is the lower-level launcher `run_all.sh` builds on:
 
 **That's it!** The simulation will start with:
