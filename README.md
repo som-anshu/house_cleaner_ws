@@ -236,23 +236,29 @@ cannot complete the handshake, because the server requires the
 `foxglove.sdk.v1` subprotocol.
 
 **Panels in the provided layout** (`config/foxglove_layout.json`, import via
-*Layouts → Import layout*):
+*Layouts → Import from file…*):
 
-| Panel | Topic | What it shows |
+| Panel | Topic / field path | What it shows |
 | --- | --- | --- |
 | 3D Scene | `/scan`, `/map`, costmaps, `/plan` | Robot model, lidar points, live map, global + local costmaps, planned path |
 | Occupancy Map | `/map` | SLAM occupancy grid in 2D |
-| Battery Percentage | `/battery_state.percentage` | Live battery trace |
+| Battery | `/battery_state.percentage` | Live battery trace |
+| Robot Velocity | `/cmd_vel_smoothed.linear.x`, `.angular.z`, `/cmd_vel.linear.x`, `/odom.twist.twist.linear.x` | Commanded speed, post-collision-monitor value, and measured odometry |
+| Lidar Range Sectors | `/scan.ranges[0]`, `[90]`, `[180]`, `[270]` | Front / left / rear / right range traces |
 | Battery Raw | `/battery_state` | percentage / voltage / current fields |
-| Robot Velocity | `/cmd_vel_smoothed`, `/cmd_vel` | Commanded `linear.x` + `angular.z`, and the post-collision-monitor value |
-| Odometry | `/odom` | Measured twist from wheel odometry |
 | Lidar Raw | `/scan` | Full `LaserScan` message fields |
-| Lidar Range Sectors | `/scan.ranges[0]`, `[90]`, `[270]` | Front / left / right range traces |
-| Dock + Mission State | `/dock/state` | Seated / charging / fault state |
+| Dock State | `/dock/state` | Seated / charging / fault state |
 
 > **Battery units:** `/battery_state.percentage` follows the ROS convention of a
 > **0–1 fraction** (0.95 = 95%), so the plot's Y axis reads 0–1. The label says
 > so explicitly to avoid it being misread as a percentage.
+
+> **Layout schema:** the import format uses `configById` (panels keyed
+> `Type!id`) plus a mosaic `layout` of `first`/`second`/`direction`/
+> `splitPercentage`. Plot paths are a single `value` string of the form
+> `/topic.field.path`, not separate `topic`/`value` fields. A file using the
+> older `panels` + `children` shape fails to import with
+> `TypeError: n.split is not a function`.
 
 **Features:**
 - 3D robot model view with lidar point cloud

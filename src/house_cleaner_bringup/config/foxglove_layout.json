@@ -1,201 +1,229 @@
 {
-  "name": "House Cleaner Robot Layout",
-  "description": "Foxglove layout for the house cleaner robot: 3D scene with lidar, live map, battery percentage, robot velocity and raw lidar messages. Import via https://app.foxglove.dev -> Open connection -> ws://localhost:8765 -> Import layout.",
-  "version": 1,
-  "panels": [
-    {
-      "id": "3d-panel",
-      "type": "3D",
-      "title": "3D Scene (lidar + costmaps + robot)",
-      "config": {
-        "cameraState": {
-          "distance": 12,
-          "perspective": true,
-          "phi": 60,
-          "targetOffset": [0, 0, 0],
-          "thetaOffset": 45
+  "configById": {
+    "3D!hc3d": {
+      "cameraState": {
+        "distance": 14,
+        "perspective": true,
+        "phi": 55,
+        "thetaOffset": 45,
+        "targetOffset": [0, 0, 0],
+        "target": [0, 0, 0],
+        "targetOrientation": [0, 0, 0, 1],
+        "fovy": 45,
+        "near": 0.05,
+        "far": 5000
+      },
+      "followTf": "base_footprint",
+      "scene": {},
+      "transforms": {},
+      "topics": {
+        "/scan": {
+          "visible": true,
+          "pointSize": 3,
+          "colorMode": "colormap",
+          "colorMap": "turbo"
         },
-        "followTf": "base_footprint",
-        "followMode": "follow-pose",
-        "scene": {},
-        "topics": {
-          "/scan": { "visible": true, "pointSize": 3, "colorMode": "colormap", "colorMap": "turbo" },
-          "/map": { "visible": true, "colorMode": "map", "alpha": 0.6 },
-          "/global_costmap/costmap": { "visible": true, "colorMode": "costmap", "alpha": 0.5 },
-          "/local_costmap/costmap": { "visible": true, "colorMode": "costmap", "alpha": 0.6 },
-          "/plan": { "visible": true, "lineWidth": 0.03 },
-          "/plan_smoothed": { "visible": true, "lineWidth": 0.03 },
-          "/controller_server/optimal_path": { "visible": true, "lineWidth": 0.02 },
-          "/controller_server/candidate_trajectories": { "visible": false }
+        "/map": {
+          "visible": true,
+          "colorMode": "map",
+          "colorMap": "turbo"
+        },
+        "/global_costmap/costmap": {
+          "visible": true,
+          "colorMode": "costmap",
+          "colorMap": "turbo",
+          "alpha": 0.5
+        },
+        "/local_costmap/costmap": {
+          "visible": true,
+          "colorMode": "costmap",
+          "colorMap": "turbo",
+          "alpha": 0.6
+        },
+        "/plan": {
+          "visible": true,
+          "lineWidth": 0.03
+        },
+        "/plan_smoothed": {
+          "visible": true,
+          "lineWidth": 0.03
+        },
+        "/controller_server/optimal_path": {
+          "visible": true,
+          "lineWidth": 0.02
+        },
+        "/controller_server/candidate_trajectories": {
+          "visible": false
         }
-      }
+      },
+      "layers": {}
     },
-    {
-      "id": "map-panel",
-      "type": "map",
-      "title": "Occupancy Map",
-      "config": {
-        "layer": "occupancy",
-        "topicPath": "/map"
-      }
+    "map!hcmap": {
+      "layer": "occupancy",
+      "topicPath": "/map",
+      "colorMode": "costmap",
+      "colorMap": "turbo",
+      "alpha": 0.7
     },
-    {
-      "id": "battery-plot",
-      "type": "plot",
-      "title": "Battery Percentage",
-      "config": {
-        "showXAxisLabels": true,
-        "showYAxisLabels": true,
-        "showLegend": true,
-        "isSynced": true,
-        "xAxisVal": "timestamp",
-        "paths": [
-          {
-            "topic": "/battery_state",
-            "value": "percentage",
-            "label": "Battery (0-1 fraction)",
-            "enabled": true,
-            "color": "#17b45f",
-            "timestampMethod": "receiveTime"
-          }
-        ]
-      }
+    "Plot!hcbat": {
+      "paths": [
+        {
+          "value": "/battery_state.percentage",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        }
+      ],
+      "minYValue": "",
+      "maxYValue": "",
+      "showLegend": true,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "title": "Battery (0-1 fraction)",
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": true,
+      "sidebarDimension": 240
     },
-    {
-      "id": "battery-gauge",
-      "type": "rawMessages",
-      "title": "Battery Raw (percentage / voltage / current)",
-      "config": {
-        "topicPath": "/battery_state"
-      }
+    "Plot!hcvel": {
+      "paths": [
+        {
+          "value": "/cmd_vel_smoothed.linear.x",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/cmd_vel_smoothed.angular.z",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/cmd_vel.linear.x",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/odom.twist.twist.linear.x",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        }
+      ],
+      "minYValue": "",
+      "maxYValue": "",
+      "showLegend": true,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "title": "Robot Velocity (m/s, rad/s)",
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": true,
+      "sidebarDimension": 240
     },
-    {
-      "id": "velocity-plot",
-      "type": "plot",
-      "title": "Robot Velocity (commanded + smoothed)",
-      "config": {
-        "showXAxisLabels": true,
-        "showYAxisLabels": true,
-        "showLegend": true,
-        "isSynced": true,
-        "xAxisVal": "timestamp",
-        "paths": [
-          {
-            "topic": "/cmd_vel_smoothed",
-            "value": "linear.x",
-            "label": "linear.x (m/s)",
-            "enabled": true,
-            "color": "#1f6fb2",
-            "timestampMethod": "receiveTime"
-          },
-          {
-            "topic": "/cmd_vel_smoothed",
-            "value": "angular.z",
-            "label": "angular.z (rad/s)",
-            "enabled": true,
-            "color": "#e07b1b",
-            "timestampMethod": "receiveTime"
-          },
-          {
-            "topic": "/cmd_vel",
-            "value": "linear.x",
-            "label": "linear.x post-collision-monitor",
-            "enabled": true,
-            "color": "#c0392b",
-            "timestampMethod": "receiveTime"
-          }
-        ]
-      }
+    "Plot!hclidar": {
+      "paths": [
+        {
+          "value": "/scan.ranges[0]",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/scan.ranges[90]",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/scan.ranges[180]",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/scan.ranges[270]",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/scan.range_min",
+          "enabled": false,
+          "timestampMethod": "receiveTime"
+        }
+      ],
+      "minYValue": "",
+      "maxYValue": "",
+      "showLegend": true,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "title": "Lidar Range Sectors (m) - 0/90/180/270 deg",
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": true,
+      "sidebarDimension": 240
     },
-    {
-      "id": "odom-velocity",
-      "type": "rawMessages",
-      "title": "Odometry (measured twist)",
-      "config": {
-        "topicPath": "/odom"
-      }
+    "RawMessages!hcbatraw": {
+      "topicPath": "/battery_state",
+      "diffTopicPath": "",
+      "diffMethod": "custom",
+      "diffEnabled": false,
+      "showFullMessageForDiff": false,
+      "autoExpandMode": "auto"
     },
-    {
-      "id": "lidar-raw",
-      "type": "rawMessages",
-      "title": "Lidar Raw (/scan LaserScan)",
-      "config": {
-        "topicPath": "/scan"
-      }
+    "RawMessages!hclidarraw": {
+      "topicPath": "/scan",
+      "diffTopicPath": "",
+      "diffMethod": "custom",
+      "diffEnabled": false,
+      "showFullMessageForDiff": false,
+      "autoExpandMode": "auto"
     },
-    {
-      "id": "lidar-plot",
-      "type": "plot",
-      "title": "Lidar Range Sectors (front / left / right)",
-      "config": {
-        "showXAxisLabels": true,
-        "showYAxisLabels": true,
-        "showLegend": true,
-        "isSynced": true,
-        "xAxisVal": "timestamp",
-        "paths": [
-          {
-            "topic": "/scan",
-            "value": "ranges[0]",
-            "label": "ranges[0] (front, 0 deg)",
-            "enabled": true,
-            "color": "#6b4ca8",
-            "timestampMethod": "receiveTime"
-          },
-          {
-            "topic": "/scan",
-            "value": "ranges[90]",
-            "label": "ranges[90] (left, ~90 deg)",
-            "enabled": true,
-            "color": "#1f6fb2",
-            "timestampMethod": "receiveTime"
-          },
-          {
-            "topic": "/scan",
-            "value": "ranges[270]",
-            "label": "ranges[270] (right, ~270 deg)",
-            "enabled": true,
-            "color": "#c0392b",
-            "timestampMethod": "receiveTime"
-          },
-          {
-            "topic": "/scan",
-            "value": "range_min",
-            "label": "range_min",
-            "enabled": false,
-            "color": "#5a6472",
-            "timestampMethod": "receiveTime"
-          }
-        ]
-      }
-    },
-    {
-      "id": "mission-state",
-      "type": "rawMessages",
-      "title": "Dock + Mission State",
-      "config": {
-        "topicPath": "/dock/state"
-      }
+    "RawMessages!hcstate": {
+      "topicPath": "/dock/state",
+      "diffTopicPath": "",
+      "diffMethod": "custom",
+      "diffEnabled": false,
+      "showFullMessageForDiff": false,
+      "autoExpandMode": "auto"
     }
-  ],
+  },
+  "globalVariables": {},
+  "userNodes": {},
+  "playbackConfig": {
+    "speed": 1
+  },
   "layout": {
-    "type": "tab",
-    "children": [
-      {
-        "type": "row",
-        "children": [
-          {
-            "type": "column",
-            "children": ["3d-panel", "battery-plot", "velocity-plot"],
-            "weight": 0.55
-          },
-          {
-            "type": "column",
-            "children": ["map-panel", "lidar-plot", "battery-gauge", "lidar-raw", "odom-velocity"],
-            "weight": 0.45
-          }
-        ]
-      }
-    ]
+    "first": {
+      "first": "3D!hc3d",
+      "second": {
+        "first": "Plot!hcbat",
+        "second": {
+          "first": "Plot!hcvel",
+          "second": "Plot!hclidar",
+          "direction": "row",
+          "splitPercentage": 50
+        },
+        "direction": "column",
+        "splitPercentage": 45
+      },
+      "direction": "column",
+      "splitPercentage": 46
+    },
+    "second": {
+      "first": "map!hcmap",
+      "second": {
+        "first": "RawMessages!hcbatraw",
+        "second": {
+          "first": "RawMessages!hclidarraw",
+          "second": "RawMessages!hcstate",
+          "direction": "row",
+          "splitPercentage": 50
+        },
+        "direction": "column",
+        "splitPercentage": 50
+      },
+      "direction": "column",
+      "splitPercentage": 42
+    },
+    "direction": "row",
+    "splitPercentage": 55
   }
 }

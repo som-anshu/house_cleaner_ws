@@ -731,5 +731,39 @@ authentication to get wrong. X11 is the fallback.
   http://localhost:8765, which cannot work (WebSocket server, and the
   handshake requires the `foxglove.sdk.v1` subprotocol).
 
+### 2026-10-21 — Foxglove layout import crash: real schema is `configById`
+- Symptom: importing the layout from the previous entry failed with
+  `TypeError: n.split is not a function`.
+- Root cause: that file used the WRONG schema — a top-level `panels` array plus
+  a `layout` tree of `children`/`weight`, with plots as `{topic, value, label}`
+  objects. Foxglove's importer expects the format it exports itself, so it
+  reached into fields that did not exist and called `.split()` on undefined.
+- Authoritative format obtained from Foxglove's own bundled sample layout
+  (`@foxglove/studio-base` 1.48.0, `assets/index.js`), not guessed:
+  * `configById`: panels keyed `"Type!id"` (e.g. `"3D!12ucir"`,
+    `"Plot!2pb7zl7"`, `"RawMessages!21ab95j"`, `"map!2vkib4e"`,
+    `"Tab!1xyw5ix"`). Note `3D`/`Plot`/`RawMessages` are capitalised; the map
+    panel key is lowercase `map`.
+  * `layout`: a mosaic of `{first, second, direction, splitPercentage}`.
+    There is no `children`/`weight` in this schema.
+  * Plot config: `paths: [{value, enabled, timestampMethod}]` where `value` is
+    the whole path string (`/topic.field.path`). `label`/`color`/`topic` are
+    NOT part of it.
+  * Also required: `globalVariables`, `userNodes`, `playbackConfig`.
+- Rewrote the layout as 8 panels in that schema: 3D scene (lidar points, map,
+  global + local costmaps, plan, optimal path), occupancy map, battery plot,
+  velocity plot, lidar range-sector plot, and raw-message panels for
+  `/battery_state`, `/scan` and `/dock/state`.
+- Every plot field path re-verified against the live messages so the traces are
+  not silently empty: `/battery_state.percentage` 0.7584;
+  `/cmd_vel.linear.x` 0.0325 and `/cmd_vel.angular.z` -0.5;
+  `/cmd_vel_smoothed.linear.x` -0.0989 / `.angular.z` 0.828;
+  `/odom.twist.twist.linear.x` -0.0958 (note Odometry nests `twist` twice);
+  `/scan` 360 ranges so `ranges[0]/[90]/[180]/[270]` are front/left/rear/right.
+- Structural validator added inline: every mosaic leaf must resolve to a
+  `configById` key, every node needs `direction` + a 0-100 `splitPercentage`,
+  and the legacy `panels`/`children` keys must be absent.
+
+
 
 
