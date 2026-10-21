@@ -148,14 +148,57 @@ if [ "$HEADLESS" = false ] && [ "$SHELL_MODE" = false ]; then
         X_DISPLAY_NUM="${X_DISPLAY_NUM:-0}"
         X_UNIX_SOCKET="/tmp/.X11-unix/X${X_DISPLAY_NUM}"
 
+        # Build an X authorisation cookie UP FRONT, for both the native and the
+        # Docker Desktop path.
+        #
+        # Why this is not optional: a modern desktop session (GNOME/Mutter with
+        # XWayland) keeps its cookie in $XDG_RUNTIME_DIR/.mutter-Xwaylandauth.*,
+        # NOT in ~/.Xauthority, and the file is recreated on every login. The
+        # container process does not look "local" to the X server, so
+        # `xhost +local:` alone is not enough -- the client must present a
+        # cookie. Without this, rviz2 dies with:
+        #     Authorization required, but no authorization protocol specified
+        #     qt.qpa.xcb: could not connect to display :0
+        # which is exactly the post-reboot symptom this block fixes.
+        XAUTH_SRC=""
+        for _cand in "${XAUTHORITY:-}" \
+                     $(ls -t "${RUNTIME_DIR}"/.mutter-Xwaylandauth.* \
+                             "$HOME/.Xauthority" 2>/dev/null); do
+            if [ -n "$_cand" ] && [ -s "$_cand" ]; then
+                XAUTH_SRC="$_cand"
+                break
+            fi
+        done
+
+        WORK_COOKIE=""
+        if [ -n "$XAUTH_SRC" ]; then
+            rm -f /tmp/xauth_docker; touch /tmp/xauth_docker
+            # Prefer the entry for this display; fall back to any entry.
+            xauth -f "$XAUTH_SRC" nlist ":${X_DISPLAY_NUM}" 2>/dev/null \
+                > /tmp/opencode/xn.txt || true
+            [ -s /tmp/opencode/xn.txt ] || \
+                xauth -f "$XAUTH_SRC" nlist 2>/dev/null \
+                > /tmp/opencode/xn.txt || true
+            if [ -s /tmp/opencode/xn.txt ]; then
+                # Docker Desktop tunnels over TCP, so the client is not
+                # unix-family and needs a wildcard-family cookie; the native
+                # path keeps the real family. Merging both is harmless.
+                xauth -f /tmp/xauth_docker nmerge - < /tmp/opencode/xn.txt || true
+                sed -e 's/^..../ffff/' /tmp/opencode/xn.txt \
+                    > /tmp/opencode/xf.txt
+                xauth -f /tmp/xauth_docker nmerge - < /tmp/opencode/xf.txt || true
+            fi
+            chmod 644 /tmp/xauth_docker
+            [ -s /tmp/xauth_docker ] && WORK_COOKIE=/tmp/xauth_docker
+        fi
+
         if [ -S "$X_UNIX_SOCKET" ]; then
             if [ "$DOCKER_FLAVOUR" = "native" ]; then
                 # The simple, correct path for a native engine.
                 SESSION_TYPE="x11"
                 echo "Display server: X11 (unix socket ${X_UNIX_SOCKET})"
 
-                # Let local clients connect. Harmless (unix-family only) and it
-                # covers the case where the host runs an xauth-based X server.
+                # Best-effort extras; the cookie below is what actually matters.
                 if command -v xhost >/dev/null 2>&1; then
                     xhost +local: >/dev/null 2>&1 || true
                 fi
@@ -172,6 +215,17 @@ if [ "$HEADLESS" = false ] && [ "$SHELL_MODE" = false ]; then
                     -e "vblank_mode=xpresent"
                     -e "__GL_SYNC_TO_VBLANK=0"
                 )
+                if [ -n "$WORK_COOKIE" ]; then
+                    echo "X cookie:        ${XAUTH_SRC} (mounted read-only)"
+                    GUI_ARGS+=(
+                        -e "XAUTHORITY=/tmp/xauth_cookie"
+                        -v "${WORK_COOKIE}:/tmp/xauth_cookie:ro"
+                    )
+                else
+                    echo "WARNING: no X cookie found; relying on xhost only." >&2
+                    echo "         If RViz dies with 'Authorization required'," >&2
+                    echo "         run: xhost +local:root" >&2
+                fi
             else
                 # Docker Desktop: tunnel the host X socket to a TCP port and
                 # point the container at it through host.docker.internal.
@@ -192,24 +246,9 @@ if [ "$HEADLESS" = false ] && [ "$SHELL_MODE" = false ]; then
                         >"/tmp/opencode/x11_socat_${X_DISPLAY_NUM}.log" 2>&1 &
                     sleep 1
                 fi
-                # The live cookie only carries a unix-family entry, and a
-                # TCP-forwarded client is not unix-family, so a wildcard
-                # cookie has to be built. This only applies to Docker Desktop.
-                XAUTH_SRC="${XAUTHORITY:-${RUNTIME_DIR}/.mutter-Xwaylandauth.}"
-                XAUTH_SRC="$(ls -t ${RUNTIME_DIR}/.mutter-Xwaylandauth.* "$HOME/.Xauthority" 2>/dev/null | head -1 || true)"
-                WORK_COOKIE=""
-                if [ -n "$XAUTH_SRC" ] && [ -s "$XAUTH_SRC" ]; then
-                    rm -f /tmp/xauth_docker; touch /tmp/xauth_docker
-                    xauth -f "$XAUTH_SRC" nlist ":${X_DISPLAY_NUM}" 2>/dev/null > /tmp/opencode/xn.txt || true
-                    [ -s /tmp/opencode/xn.txt ] || \
-                        xauth -f "$XAUTH_SRC" nlist 2>/dev/null > /tmp/opencode/xn.txt || true
-                    if [ -s /tmp/opencode/xn.txt ]; then
-                        sed -e 's/^..../ffff/' /tmp/opencode/xn.txt > /tmp/opencode/xf.txt
-                        xauth -f /tmp/xauth_docker nmerge - < /tmp/opencode/xf.txt || true
-                    fi
-                    chmod 644 /tmp/xauth_docker
-                    [ -s /tmp/xauth_docker ] && WORK_COOKIE=/tmp/xauth_docker
-                fi
+                # The cookie was already built above (both the real-family and
+                # a wildcard-family entry are in it), so the TCP-forwarded
+                # client can use it directly.
                 if [ -z "$WORK_COOKIE" ]; then
                     echo "ERROR: could not build an X authorisation cookie for the" >&2
                     echo "       Docker Desktop VM. Run ./run_docker.sh --headless or" >&2

@@ -141,15 +141,25 @@ verify() {
 
   # The bridge is a WebSocket server and only accepts the foxglove subprotocol;
   # a plain page load returns 400, so probe with a real upgrade request.
-  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
-    -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
-    -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
-    -H 'Sec-WebSocket-Protocol: foxglove.sdk.v1' \
-    http://localhost:8765 2>/dev/null || true)
-  if [ "$code" = "101" ]; then
+  #   * retry() because the listener binds a moment after Nav2 comes up, and a
+  #     container that was just relaunched has not bound 8765 yet -- a bare
+  #     single-shot probe reports a spurious HTTP 000 in that window.
+  #   * curl exits 28 (timeout) on a SUCCESSFUL upgrade, because the server
+  #     keeps the socket open; only the HTTP status code is meaningful here.
+  foxglove_up() {
+    local c
+    c=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+      -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
+      -H 'Sec-WebSocket-Version: 13' \
+      -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
+      -H 'Sec-WebSocket-Protocol: foxglove.sdk.v1' \
+      http://localhost:8765 2>/dev/null || true)
+    [ "$c" = "101" ]
+  }
+  if retry foxglove_up; then
     ok "Foxglove bridge accepts WebSocket on ws://localhost:8765"
   else
-    bad "Foxglove handshake returned HTTP ${code:-none} (expected 101)"
+    bad "Foxglove handshake never returned HTTP 101 (bridge not listening?)"
   fi
 
   battery_ok() {

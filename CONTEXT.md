@@ -673,3 +673,33 @@ authentication to get wrong. X11 is the fallback.
   three one-line footers at 6.06/6.50/6.94 in. Final render: 16 pages, no
   text past the page edge, 0 cross-box clashes, 0 estimator overlaps.
 
+### 2026-10-21 — post-reboot GUI failure: X cookie + Foxglove probe
+- Symptom after a reboot: `./run_all.sh` came up but the verifier reported
+  `[FAIL] RViz not running` and `[FAIL] Foxglove handshake returned HTTP 000`.
+- Root cause 1 (RViz): the desktop is GNOME/Mutter with XWayland, so the X
+  cookie now lives in `$XDG_RUNTIME_DIR/.mutter-Xwaylandauth.<random>` and is
+  recreated on every login — `~/.Xauthority` **does not exist**. The native
+  X11 path in `run_docker.sh` passed no cookie and relied on `xhost +local:`
+  only, which is insufficient because a container process is not "local" to
+  the X server. rviz2 died with:
+  `Authorization required, but no authorization protocol specified` /
+  `qt.qpa.xcb: could not connect to display :0`.
+  Fix: `run_docker.sh` now builds the cookie ONCE (searching `$XAUTHORITY`,
+  then the newest `$XDG_RUNTIME_DIR/.mutter-Xwaylandauth.*`, then
+  `~/.Xauthority`) and mounts it read-only as `/tmp/xauth_cookie` with
+  `XAUTHORITY` set, on BOTH the native and Docker-Desktop paths. The
+  Docker-Desktop branch no longer duplicates the logic; `xhost` stays as a
+  best-effort extra, and a missing cookie now prints an actionable warning
+  (`xhost +local:root`) instead of failing silently.
+- Root cause 2 (Foxglove): the bridge was healthy — `ss` shows `0.0.0.0:8765`
+  listening and the upgrade returns 101. The probe was a bare single-shot,
+  so it caught the window right after a watchdog relaunch when the listener
+  had not re-bound yet, and reported HTTP 000. `curl` also exits 28 on a
+  SUCCESSFUL upgrade (the socket is held open), so only the status code is
+  meaningful. Fix: the check is now a `foxglove_up()` predicate wrapped in
+  the existing `retry` helper (~60 s), matching the RViz/Nav2 checks.
+- Verified: relaunch reports `X cookie: /run/user/1000/.mutter-Xwaylandauth.*
+  (mounted read-only)`, all 8 checks `[OK]`, rviz2 alive with no Qt/auth
+  errors, and the mission cleaning (goal 3/9 done, ~7 s per goal).
+
+
