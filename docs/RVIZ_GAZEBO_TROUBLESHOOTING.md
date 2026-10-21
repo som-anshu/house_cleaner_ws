@@ -152,6 +152,73 @@ ros2 topic hz /clock
 > integration/frame error, not a miscalibrated wheel. Measure the drift rate
 > first, then decide which of the two you have.
 
+### 1.5 The cause almost nobody checks: rotation faster than matching can track
+
+This is the single most common real cause of *visible* map tearing, and it is
+absent from most guides. It is a **rate** problem, not a tuning problem.
+
+Scan matching aligns a new scan to the map. That alignment is only reliable if
+the new scan still **overlaps** the previous one. Rotation is what breaks the
+overlap — far more than translation — because a single yaw of *θ* sweeps the
+whole scan by *θ* about the robot.
+
+The governing relation:
+
+```
+yaw swept between two matched scans  ≈  max_angular_rate × matching_interval
+```
+
+If that product approaches the scan's field of view divided by a few, matching
+degrades; beyond it, the matcher fails and the system falls back to a wide
+**loop-closure search**, which is free to relocate the pose by metres.
+
+Measure the rate, then compare:
+
+```sh
+ros2 topic echo /cmd_vel --field angular.z      # or record and take the p90
+```
+
+| max angular rate | Per 0.2 s matching tick | Verdict |
+| --- | --- | --- |
+| ≤ 0.5 rad/s (29 °/s) | ≤ 5.7° | Comfortable |
+| 0.5 – 1.0 rad/s | 5.7 – 11.5° | Acceptable |
+| 1.0 – 2.0 rad/s | 11.5 – 23° | Marginal; expect occasional snaps |
+| **> 2.0 rad/s (115 °/s)** | **> 23°** | **Matching fails; loop closure snaps the pose** |
+
+**Diagnostic signature.** The tell is a discontinuity in `map → odom` that is
+*large while the odometry barely moved*:
+
+```
+map->odom jumped 143 cm   (odom travelled only 5 cm in the prior 1 s)
+```
+
+A correction 20–30× the motion that provoked it is not correction — it is
+relocalisation. If you see that ratio, look at the angular rate first.
+
+**Resolution.** Clamp the angular rate consistently everywhere it is set,
+because leaving any one looser re-introduces the fault:
+
+| Layer | Parameter | Note |
+| --- | --- | --- |
+| Controller | `wz_max` | The planner's own velocity bound |
+| Controller | `wz_std` | Noise spread; scale with `wz_max` |
+| Velocity smoother | `max_velocity[2]` | **The clamp actually applied to the wire — must not exceed the controller's** |
+| Robot description | max rotational velocity | Keep the declared limit consistent |
+
+> **Two authorities for one limit is a trap.** Setting the controller's bound
+> but not the smoother's means the smoother can still emit the fast spin, and
+> the fix silently does nothing. Set both, and verify.
+
+**Measured outcome of this exact fix** (150 s of continuous driving):
+
+| Metric | Before | After |
+| --- | --- | --- |
+| Max angular rate | 103 °/s | 52 °/s |
+| `map → odom` jumps > 15 cm | 8 | 0 in four of five 30 s windows |
+| Largest single jump | 143 cm | 15 cm |
+| Per-30 s `map → odom` span | 6.8 m / 5.7 m | 0.003 – 0.163 m |
+| Scans dropped by the filter | many | 0 |
+
 ---
 
 ## 2. RViz Flickering & Black Screen Artifacts
@@ -201,6 +268,11 @@ means the *entire scene* is re-placed every frame. With `Fixed Frame: map`, the
 map display, robot, TF axes and laser scan all jump together. That reads as
 "flickering RViz" while the actual fault is SLAM instability. **Fix §1 and the
 flicker frequently disappears.**
+
+In practice the dominant trigger for that instability is §1.5 — rotation faster
+than scan matching can track — so **check the angular rate before touching any
+rendering setting.** On this stack that one clamp removed the tearing entirely,
+and the flicker with it.
 
 **(b) A heavy PointCloud2 display.** Dense clouds with a long decay time, large
 point size, and a high queue size saturate the update path, producing stutter
@@ -326,6 +398,45 @@ ros2 topic info <topic> --verbose    # compare reliability + durability both sid
 | One authority per TF edge | `ros2 topic info /tf --verbose` | One node per `parent → child` |
 | QoS matches | `ros2 topic info <t> --verbose` | Same reliability/durability both ends |
 | Scan matching settled | `ros2 run tf2_ros tf2_echo map odom` | Small, slowly varying values |
+| **Angular rate within matching budget** | `ros2 topic echo /cmd_vel --field angular.z` | **≤ 1.0 rad/s** |
+
+### 3.7 A startup trap worth knowing: unbounded lifecycle calls
+
+A recurring scripted pattern is a bringup loop that retries lifecycle
+transitions until they succeed:
+
+```bash
+for i in $(seq 1 120); do
+  ros2 lifecycle set /controller_server configure && break
+  sleep 1
+done
+```
+
+**This can hang forever.** If a single `ros2 lifecycle set` service call never
+returns — observed under cold-boot load, when the target node's executor is busy
+inside `on_configure` — the loop blocks on that one call and never reaches its
+own retry logic. Every later node stays `unconfigured`, action servers such as
+`navigate_to_pose` never appear, and dependent nodes abort with errors that
+point nowhere near the real cause:
+
+```
+[mission_supervisor]: No /navigate_to_pose server — aborting
+```
+
+**Always bound the call, not just the loop.** The retry is only meaningful if
+each attempt can time out:
+
+```bash
+for i in $(seq 1 120); do
+  timeout 10 ros2 lifecycle set /controller_server configure && break
+  sleep 1
+done
+```
+
+The general rule: **a retry loop whose body can block indefinitely is not a
+retry loop.** Bound the inner call so a hang becomes a retry, and check whether
+your own bringup scripts do this — the failure mode is silent and every
+downstream error message is misleading.
 
 ---
 
@@ -341,9 +452,15 @@ interpreted against a known-good baseline.
 | 3 | Is the renderer hardware? | `docker exec … glxinfo -B` | The entire "GPU is broken" branch |
 | 4 | Is the TF tree complete? | `ros2 run tf2_ros tf2_echo map base_footprint` | Missing-link failures |
 | 5 | Is odometry plausible? | `ros2 topic echo /odom --field pose.pose.position` | Integrator/frame faults |
-| 6 | Is the SLAM correction stable? | `tf2_echo map odom`, span over 30 s | Scan-matching thrash |
-| 7 | Is QoS matched? | `ros2 topic info <t> --verbose` | Silent empty displays |
-| 8 | Is the frame rate adequate? | RViz `Frame Rate`; host `nvidia-smi` | Content-driven stutter |
+| 6 | **Is the rotation rate within the matching budget?** | `ros2 topic echo /cmd_vel --field angular.z` | **The dominant cause of visible tearing (§1.5)** |
+| 7 | Is the SLAM correction stable? | `tf2_echo map odom`, span over 30 s | Scan-matching thrash |
+| 8 | Is QoS matched? | `ros2 topic info <t> --verbose` | Silent empty displays |
+| 9 | Is the frame rate adequate? | RViz `Frame Rate`; host `nvidia-smi` | Content-driven stutter |
+
+> **Why step 6 sits above step 7.** A large, unstable `map → odom` is a
+> *symptom*. Measuring the angular rate tells you whether the cause is upstream
+> of the matcher. Checking the symptom first sends you into SLAM parameters when
+> the real fix is a velocity limit.
 
 ---
 
@@ -353,9 +470,12 @@ interpreted against a known-good baseline.
 | --- | --- |
 | Setting `LIBGL_ALWAYS_SOFTWARE=1` on a machine with a GPU | Trades a working fast path for a slow one and can cause the tearing it was meant to fix |
 | Tuning SLAM parameters before measuring `map → odom` | Chases a symptom the parameters may not govern |
+| Tuning SLAM before measuring the **angular rate** | If the robot spins faster than matching can track (§1.5), no SLAM parameter fixes it |
 | Assuming drift is wheel miscalibration | Multi-metre odometry error indicates integration/frame faults, not wheel radius |
 | Treating a `RELIABLE` subscriber to a `BEST_EFFORT` topic as "no data yet" | It will never receive data; the mismatch is silent by design |
 | Running two authorities for one TF edge | Produces jitter indistinguishable from a rendering fault |
+| Clamping the controller's velocity but not the smoother's | The smoother is the clamp on the wire; an unclamped one silently re-introduces the fault |
+| Retry loops whose body can block indefinitely | A hung call means the retry never happens; the loop is only decorative |
 | Mixing sim time and wall time "just for one node" | Breaks TF for the whole graph |
 | Building analysis on an unverified baseline | Later measurements inherit the earlier fault |
 
@@ -379,6 +499,8 @@ interpreted against a known-good baseline.
 | --- | --- | --- | --- |
 | `map → odom` span over 30 s driving | < 0.10 m | 0.1 – 0.5 m | > 1.0 m |
 | `/odom` position vs known world size | Inside the world | Near the boundary | Far outside |
+| Max angular rate | ≤ 0.5 rad/s | 0.5 – 1.0 rad/s | > 1.0 rad/s |
+| `map → odom` jump vs motion that caused it | ≈ 1× | 2 – 5× | > 10× (relocalisation) |
 | RViz frame rate | ≥ 15 FPS | 5 – 15 FPS | < 5 FPS |
 | `map → odom` yaw span over 30 s | < 1° | 1 – 5° | > 5° |
 
