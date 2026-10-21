@@ -36,3 +36,49 @@ slam_toolbox:
     # goal because the start was enclosed by the dock's lethal cells.
     minimum_travel_distance: 0.15
     minimum_travel_heading: 0.20
+
+    # --- Fine scan matching ------------------------------------------------
+    # MEASURED PROBLEM: map->odom was jumping 45-143 cm while odometry moved
+    # only 4-6 cm in the same second (7 jumps in 45 s, on the
+    # map_update_interval cadence). Those whole-metre snaps are what tear the
+    # map in RViz -- the scans themselves are fine.
+    #
+    # Mechanism: correlation_search_space_dimension is the +/- window (metres)
+    # in which fine matching looks for the best scan alignment. At the ROS
+    # default of 0.5 m, any pose doubt larger than half a metre cannot be
+    # resolved by fine matching, so slam_toolbox falls through to the LOOP
+    # CLOSURE search, whose default space is 8.0 m. That search is free to snap
+    # the pose by metres -- exactly the observed 143 cm discontinuity.
+    #
+    # Raising the fine window above the plausible per-update error keeps the
+    # correction inside fine matching, where it is smooth and bounded.
+    correlation_search_space_dimension: 1.0
+    correlation_search_resolution: 0.05
+
+    # Fine-match quality gate. Below this response the match is rejected.
+    # Default 0.1 is permissive enough to accept a poor alignment and publish
+    # it, which is what produces the jumps; 0.15 makes rejection (and therefore
+    # "keep the odometry prediction") the safer outcome.
+    link_match_minimum_response_fine: 0.15
+    link_scan_maximum_distance: 1.0
+    loop_search_maximum_distance: 3.0
+
+    # --- Loop closure ------------------------------------------------------
+    # Keep loop closing ON (it is what corrects accumulated map error over a
+    # long mission) but bound its search so a closure cannot teleport the pose
+    # across the room. Searches only within loop_search_maximum_distance.
+    do_loop_closing: true
+    loop_search_space_dimension: 3.0
+    loop_match_minimum_response_coarse: 0.35
+    loop_match_minimum_response_fine: 0.45
+
+    # Smoothing/correction cadence -- matches map_update_interval so the map and
+    # the correction are consistent with each other.
+    minimum_time_interval: 0.5
+
+    # --- Occupancy grid ----------------------------------------------------
+    # Cap the usable laser range below the 3.5 m sensor max: long, noisy
+    # returns at grazing incidence are the least reliable part of the scan and
+    # they dominate the match when the robot is near a wall.
+    max_laser_range: 3.5
+    occupancy_threshold: 0.1

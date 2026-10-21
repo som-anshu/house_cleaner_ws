@@ -90,14 +90,16 @@ def generate_launch_description():
     # rclcpp_lifecycle::LifecycleNode (no BondServer), so the manager's bond
     # client can never connect.  Wait on each transition (retry up to 120x1s)
     # to survive late node registration under startup load.
+    # `timeout 10` per attempt so a hung service call retries instead of
+    # blocking the loop (see the Nav2 bringup note below).
     slam_activate = ExecuteProcess(
         cmd=['bash', '-c',
              'for i in $(seq 1 120); do '
-             'ros2 lifecycle set /slam_toolbox configure >/dev/null 2>&1 && break; '
-             'sleep 1; done; '
+             'timeout 10 ros2 lifecycle set /slam_toolbox configure '
+             '>/dev/null 2>&1 && break; sleep 1; done; '
              'for j in $(seq 1 120); do '
-             'ros2 lifecycle set /slam_toolbox activate >/dev/null 2>&1 && break; '
-             'sleep 1; done'],
+             'timeout 10 ros2 lifecycle set /slam_toolbox activate '
+             '>/dev/null 2>&1 && break; sleep 1; done'],
         output='screen',
         condition=IfCondition(_is('sim')),
     )
@@ -157,9 +159,16 @@ def generate_launch_description():
     # The manager calls get_state() with a 2s default timeout; under cold-boot
     # load (8 nodes + Gazebo + RViz) the target node's executor can be busy in
     # on_configure, so the call times out and the manager aborts the whole
-    # bringup.  Retrying each transition up to 120x1s makes a busy executor
-    # only delay, never abort — the same pattern already proven for
-    # slam_toolbox above.  Prints a readiness marker for run_docker.sh.
+    # bringup.  Retrying each transition makes a busy executor only delay,
+    # never abort — the same pattern already proven for slam_toolbox above.
+    # Prints a readiness marker for run_docker.sh.
+    #
+    # `timeout 10` around each ros2 lifecycle call is ESSENTIAL: without it a
+    # single hung transition service call (observed on controller_server during
+    # cold boot) blocks the loop forever, so no later node is ever configured,
+    # navigate_to_pose never appears, and mission_supervisor aborts with
+    # "No /navigate_to_pose server". Bounding each attempt turns a hang into a
+    # retry, which is the whole point of the loop.
     nav2_nodes = [
         'controller_server', 'smoother_server', 'planner_server',
         'behavior_server', 'bt_navigator', 'waypoint_follower',
@@ -169,11 +178,11 @@ def generate_launch_description():
     for n in nav2_nodes:
         nav2_bringup_cmds.append(
             f'for i in $(seq 1 120); do '
-            f'ros2 lifecycle set /{n} configure >/dev/null 2>&1 && break; '
-            f'sleep 1; done; '
+            f'timeout 10 ros2 lifecycle set /{n} configure >/dev/null 2>&1 '
+            f'&& break; sleep 1; done; '
             f'for j in $(seq 1 120); do '
-            f'ros2 lifecycle set /{n} activate >/dev/null 2>&1 && break; '
-            f'sleep 1; done; '
+            f'timeout 10 ros2 lifecycle set /{n} activate >/dev/null 2>&1 '
+            f'&& break; sleep 1; done; '
         )
     nav2_bringup_cmds.append('echo "Nav2 lifecycle bringup complete"')
     nav2_activate = ExecuteProcess(
@@ -253,7 +262,37 @@ def generate_launch_description():
         }],
     )
 
-    # ---------------------------------------------------- 6. Mission supervisor
+    # Ground-truth odometry override.
+    #
+    # DISABLED: it cannot work through ros_gz_bridge. The bridge maps
+    # gz.msgs.Pose_V -> tf2_msgs/TFMessage but DISCARDS the pose ``name`` and
+    # the header stamp (all 48 transforms arrive with empty child_frame_id and
+    # zero stamps -- verified by echoing /ground_truth_poses). The node matched
+    # on the model name, so it never fired, and while it was enabled the TF tree
+    # had NO odom -> base_footprint link at all: slam_toolbox and RViz dropped
+    # every scan and no map was produced.
+    #
+    # A working version needs gz-transport bindings (not installed) or a
+    # bridge that preserves names. The DiffDrive tf entry in burger_bridge.yaml
+    # is the transport for odom -> base_footprint in the meantime.
+    #
+    # odom_gt = Node(
+    #     package='house_cleaner_mission',
+    #     executable='odom_ground_truth',
+    #     name='odom_ground_truth',
+    #     output='screen',
+    #     parameters=[{
+    #         'use_sim_time': use_sim_time,
+    #         'model_name': 'turtlebot3_burger',
+    #         'pose_topic': '/ground_truth_poses',
+    #         'odom_topic': '/odom',
+    #         'odom_frame': 'odom',
+    #         'base_frame': 'base_footprint',
+    #         'publish_rate': 30.0,
+    #         'anchor_at_start': True,
+    #     }],
+    # )
+
     supervisor = Node(
         package='house_cleaner_mission',
         executable='mission_supervisor',

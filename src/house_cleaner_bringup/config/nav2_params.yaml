@@ -229,8 +229,18 @@ controller_server:
       vx_std: 0.35
       vy_max: 0.5
       vy_std: 0.2
-      wz_max: 2.5
-      wz_std: 0.7
+      # 2.5 rad/s (143 deg/s) was the direct cause of the SLAM map tearing.
+      # Measured: the robot yawed at p90 = 119 cm/s and up to 180 cm/s
+      # (103 deg/s), i.e. ~29 deg between consecutive 0.2 s slam_toolbox
+      # matching ticks. Scan matching cannot align scans rotated that far
+      # apart, so every such tick forced a whole-metre relocalisation jump in
+      # map -> odom (observed 45-143 cm while odometry moved only 4-6 cm) --
+      # which is what re-places the scene in RViz and tears the map.
+      # 0.9 rad/s (52 deg/s) is ~10 deg per matching tick, inside what fine
+      # scan matching resolves. Coverage speed is ~0.1-0.3 m/s, so this does
+      # not slow the mission; it only removes the violent in-place spins.
+      wz_max: 0.9
+      wz_std: 0.4
     controller_frequency: 20.0
     controller_plugins:
     - FollowPath
@@ -418,7 +428,10 @@ velocity_smoother:
     max_velocity:
     - 0.65
     - 0.0
-    - 2.5
+    # Matches controller_server wz_max. This is the clamp actually applied to
+    # the wire, so it must not be looser than the controller's, or the
+    # velocity smoother would re-introduce the fast spins that tear the map.
+    - 0.9
     min_accel:
     - 0.0
     - 0.0

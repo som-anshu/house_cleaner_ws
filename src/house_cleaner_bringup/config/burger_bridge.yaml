@@ -21,6 +21,17 @@
   direction: GZ_TO_ROS
 
 # gz topic published by DiffDrive plugin
+#
+# This is the ONLY source of the odom -> base_footprint transform.
+#
+# NOTE ON ODOMETRY DRIFT (measured, not assumed):
+# Earlier in this session the ROS-side /odom reported values tens of metres
+# outside the 5.05 x 6.15 m room, and slam_toolbox compensated with huge
+# map -> odom corrections. Inspection of the GAZEBO-side /odom now shows the
+# plugin's own pose sitting at ~(0, 0) and NOT drifting, so the runaway values
+# seen on the ROS side were not the plugin integrating freely. The transforms
+# are therefore kept bridged (below) but the odometry quality is treated as an
+# open item rather than "fixed" -- see CONTEXT.md for the measurements.
 - ros_topic_name: "odom"
   gz_topic_name: "odom"
   ros_type_name: "nav_msgs/msg/Odometry"
@@ -28,6 +39,12 @@
   direction: GZ_TO_ROS
 
 # gz topic published by DiffDrive plugin
+#
+# Supplies odom -> base_footprint on /tf. Without this entry the TF tree has no
+# odom -> base_footprint link at all, so slam_toolbox and RViz drop EVERY scan
+# with:
+#   "Message Filter dropping message: frame 'base_scan' ... queue is full"
+# and no map is ever produced. Verified by observation.
 - ros_topic_name: "tf"
   gz_topic_name: "tf"
   ros_type_name: "tf2_msgs/msg/TFMessage"

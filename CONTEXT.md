@@ -764,6 +764,117 @@ authentication to get wrong. X11 is the fallback.
   `configById` key, every node needs `direction` + a 0-100 `splitPercentage`,
   and the legacy `panels`/`children` keys must be absent.
 
+### 2026-10-21 — RViz map tearing: DiffDrive odometry was the root cause
+- Symptom: the SLAM map looked misaligned/jagged after each scan and the RViz
+  pane flickered heavily.
+- Measured, not guessed:
+  * The room is 5.05 x 6.15 m (walls at x +/-2.425, y +/-2.975).
+  * `/odom` reported the robot at **(-15.46, -10.44)**, ~17 m OUTSIDE the room,
+    and it moved ~3 m in 25 s while the robot crawled at ~0.1 m/s. Later
+    samples reached (-19.96, -10.64).
+  * Gazebo's ground truth (`/world/house_room/dynamic_pose/info`) reported
+    (2.29, 1.38) — inside the room. So the simulator was right and the
+    odometry was wrong.
+  * `map -> odom` therefore swung by **9.53 m and 34.6 deg over 30 s**. With
+    RViz's fixed frame set to `map`, the whole scene is re-placed every frame:
+    that IS the tearing and the flicker.
+  * `/odom` covariance was all zeros — no uncertainty for SLAM to weight.
+- Root cause: Gazebo's DiffDrive plugin INTEGRATES commanded wheel velocities
+  with no ground-truth correction. Docking creep (0.04 m/s), the
+  collision_monitor speed limit, NAV_SILENT/ABORTED cancels and lateral
+  re-planning all inject velocity discontinuities that never heal.
+- Flicker was NOT a GPU problem. `glxinfo -B` inside the container showed
+  NVIDIA RTX 3070 Ti, OpenGL 4.6, direct rendering — hardware rendering was
+  already working. Setting `LIBGL_ALWAYS_SOFTWARE=1` (the advice in the
+  generic handout) would have made it WORSE.
+- Fix, three parts:
+  1. Bridge Gazebo ground truth: `world/house_room/dynamic_pose/info`
+     (`gz.msgs.Pose_V`) -> `/ground_truth_poses` (`tf2_msgs/TFMessage`).
+  2. New node `house_cleaner_mission/odom_ground_truth.py` publishes
+     `odom -> base_footprint` and `/odom` from that real pose, anchored at the
+     first sighting so odometry starts at (0,0,0), with finite-difference twist
+     and non-zero covariance.
+  3. REMOVED the DiffDrive `odom` and `tf` entries from `burger_bridge.yaml`
+     (commented out with the reason). Leaving them would put two publishers on
+     /odom and two authorities on the odom -> base_footprint edge, producing
+     exactly the jitter being fixed.
+- Launch: `odom_ground_truth` starts BEFORE slam_toolbox, which is now delayed
+  3 s via TimerAction so the corrector is already publishing when scan matching
+  begins. Otherwise SLAM's initial map->odom is computed against the runaway
+  integrator value.
+- Consumers all benefit automatically: battery_sim (speed gate),
+  docking_controller (seat check) and mission_supervisor (motion checks) all
+  read only `twist.twist.linear`, which the new node publishes correctly.
+- Portability: a real robot would feed the same interface from wheel encoders
+  fused with an IMU (robot_localization EKF). Nothing downstream can tell the
+  difference, so sim/real interchangeability is preserved.
+- IMPORTANT: `setup.py` gained an entry point, and the container mounts only
+  `src/` while `install/` is baked into the image. A new console script
+  therefore REQUIRES `./run_docker.sh --build`, not just a relaunch.
+- Handout added: `docs/RVIZ_GAZEBO_TROUBLESHOOTING.md` — measure-first guide
+  separating SLAM drift from pane flicker, with the map->odom span thresholds,
+  a renderer check, a diagnostic order of operations and anti-patterns.
+
+### 2026-10-21 (cont.) — the ACTUAL root cause: wz_max was 2.5 rad/s
+- The ground-truth-odometry approach was implemented and then REVERTED, because
+  it cannot work through ros_gz_bridge:
+  * The bridge maps gz.msgs.Pose_V -> tf2_msgs/TFMessage but DISCARDS the pose
+    `name` and the header stamp. Echoing /ground_truth_poses showed all 48
+    transforms with `child_frame_id: ''` and `stamp: {sec: 0, nanosec: 0}`.
+  * The corrector node matched on the model name, so it never fired. While it
+    was enabled the TF tree had NO odom -> base_footprint link at all, so
+    slam_toolbox AND rviz dropped EVERY scan with "Message Filter dropping
+    message: frame 'base_scan' ... queue is full" and no map was produced.
+  * `gz.transport13` python bindings are NOT installed, so reading Gazebo
+    directly from a python node is not available either.
+  * Decision: restored the bridge `odom` + `tf` entries (the original 7-entry
+    set) and REVERTED launch ordering. `odom_ground_truth.py` stays in the repo
+    but is disabled in the launch file, with the reason recorded inline.
+- Also fixed a real startup bug found on the way: the Nav2 lifecycle bringup
+  bash loop called `ros2 lifecycle set` with NO timeout. A single hung service
+  call (observed on controller_server during cold boot) blocked the loop
+  forever, so no later node was configured, navigate_to_pose never appeared and
+  mission_supervisor aborted with "No /navigate_to_pose server". Every
+  lifecycle call (4 sites: slam configure/activate + nav2 configure/activate) is
+  now wrapped in `timeout 10` so a hang becomes a retry, which is the point of
+  the loop.
+- NOTE the earlier "runaway odometry" reading was a stale-container artifact:
+  on a fresh boot Gazebo's own /odom integrates correctly and the ROS-side
+  /odom stays inside the room. The bridge `odom`/`tf` entries are correct as
+  originally shipped.
+- TRUE ROOT CAUSE of the map tearing, found by measuring the angular rate:
+  * `controller_server ... wz_max: 2.5` rad/s = 143 deg/s. Measured on /odom:
+    angular speed p90 = 119 cm/s, max = 180 cm/s = **103 deg/s**.
+  * At 103 deg/s the robot yaws ~**29 deg between consecutive 0.2 s
+    slam_toolbox matching ticks**. Scan matching cannot align scans rotated that
+    far apart, so each such tick fell through to loop closure and snapped the
+    pose by up to 143 cm WHILE ODOMETRY MOVED ONLY 4-6 cm.
+  * That snapping is exactly what re-places the whole scene every frame under
+    RViz's `Fixed Frame: map` -- the map tearing and the pane flicker.
+- SLAM params were also incomplete: the file ENDED at `minimum_travel_heading`
+  with none of the scan-matching keys, so the node ran on ROS defaults
+  (correlation_search_space_dimension 0.5 m, loop_search_space_dimension 8 m).
+  Added correlation_search_space_dimension 1.0, correlation_search_resolution
+  0.05, link_match_minimum_response_fine 0.15, loop_search_space_dimension 3.0,
+  loop closure response gates, max_laser_range 3.5, occupancy_threshold 0.1.
+- Fix applied consistently in THREE places so nothing can re-introduce it:
+  controller_server wz_max 2.5 -> 0.9, wz_std 0.7 -> 0.4, and
+  velocity_smoother max_velocity[2] 2.5 -> 0.9 (this is the clamp actually
+  applied to the wire; it must not be looser than the controller's).
+- MEASURED RESULT over 150 s of continuous driving:
+  * angular rate: max 103.3 -> **51.6 deg/s** (median 0.0).
+  * map->odom discontinuities >15cm: 8 -> **0 in four of five 30 s windows**
+    (one 15.4 cm event in the fifth; before, single jumps reached 110-143 cm).
+  * per-30 s span: was 6.8 m / 5.7 m, now **0.003-0.163 m**.
+  * scan drops: 0.
+- Mission still healthy through the change: full dock -> charge -> undock ->
+  resume cycle observed (DOCKING laser-guided creep at 12:41:53, cleaning
+  resumed at goal 3/9 and progressed to 8/9), NAV_SILENT skips still bounded.
+- NOTE: config/*.yaml and launch/*.py are bind-mounted, so a relaunch is
+  enough; only new console-script entry points need `./run_docker.sh --build`.
+
+
+
 
 
 

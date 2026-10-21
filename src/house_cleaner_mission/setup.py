@@ -17,6 +17,7 @@ setup(
     entry_points={
         "console_scripts": [
             "mission_supervisor = house_cleaner_mission.mission_supervisor:main",
+            "odom_ground_truth = house_cleaner_mission.odom_ground_truth:main",
         ],
     },
 )
